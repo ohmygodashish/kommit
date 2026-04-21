@@ -11,21 +11,17 @@ npm install -g kommit-cli
 ## Quick Start
 
 ```bash
-# On first run (no config found), kommit will automatically launch the setup wizard.
-# This generates ~/.config/kommit/config.json and ~/.local/share/kommit/auth.json
+# On first run, kommit will automatically launch the setup wizard.
 kommit
 
-# Add API keys for additional providers (merges into existing auth.json)
+# Add API keys for additional providers
 kommit --init
 
 # Configure default provider, model, or skill without touching auth
 kommit --set
-
-# Generate a commit message from your staged (or unstaged) changes
-kommit
 ```
 
-## Supported Providers
+### Supported Providers
 
 - **Cloud Providers:** [OpenAI](https://developers.openai.com/api/docs/models), [Anthropic](https://platform.claude.com/docs/en/about-claude/models/overview), [Google](https://ai.google.dev/gemini-api/docs/models), [OpenRouter](https://openrouter.ai/models?fmt=cards&output_modalities=text)
 - **Local Providers:** [Ollama](https://ollama.com/search), [LM Studio](https://lmstudio.ai/models)
@@ -46,7 +42,7 @@ kommit [options]
 | `--dry-run` | Generate and show the message without committing |
 | `--verbose` | Print raw prompts, responses, and git commands |
 
-## Interactive Flow
+### Interactive Flow
 
 After generating a message, you'll see:
 
@@ -88,7 +84,8 @@ feat(auth): add JWT validation middleware
 ## Configuration
 
 Config lives in `~/.config/kommit/config.json`.
-API keys are stored separately in `~/.local/share/kommit/auth.json` so you can version-control your preferences without leaking secrets.
+
+API keys are stored separately in `~/.local/share/kommit/auth.json`.
 
 Kommit follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html):
 - Config: `$XDG_CONFIG_HOME/kommit/` (falls back to `~/.config/kommit/`)
@@ -103,6 +100,7 @@ Set your default LLM provider in `~/.config/kommit/config.json`:
   "defaultProvider": "openai"
 }
 ```
+> Or use `kommit --set`
 
 Supported values: `openai`, `anthropic`, `google`, `openrouter`, `ollama`, `lmstudio`.
 
@@ -166,6 +164,7 @@ Kommit supports modular skills stored in `~/.agents/skills/{skillName}/SKILL.md`
   "skillName": "my-team"
 }
 ```
+> Or use `kommit --set`
 
 If the skill file is missing, kommit prints a warning and falls back to the base prompt.
 
@@ -174,14 +173,13 @@ If the skill file is missing, kommit prints a warning and falls back to the base
 Use `kommit --set` to modify your configuration without touching auth keys:
 
 ```bash
-# Change default provider and model
 kommit --set
-
-# This opens an interactive wizard where you can:
-# - Select a new default provider (from providers with API keys + local ones)
-# - Update the model name for that provider
-# - Change or clear your skill name
 ```
+
+This opens an interactive wizard where you can:
+- Select a new default provider, Update the model name for that provider
+- Change or clear your skill name
+
 
 This is useful when you want to switch providers or models without re-entering API keys.
 
@@ -259,4 +257,4 @@ This is useful when you want to switch providers or models without re-entering A
 
 ## License
 
-MIT
+[MIT License](LICENSE)
