@@ -28,7 +28,7 @@ function getAuthPath() {
 function getDefaultConfig() {
   return {
     version: CURRENT_CONFIG_VERSION,
-    defaultProvider: 'openai',
+    defaultProvider: 'openrouter',
     skillName: null,
     providers: {
       openai: {
