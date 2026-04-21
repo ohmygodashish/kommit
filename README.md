@@ -222,13 +222,13 @@ This is useful when you want to switch providers or models without re-entering A
       "timeout": 30000
     },
     "ollama": {
-      "model": "default",
+      "model": "qwen3.6:latest",
       "endpoint": "http://localhost:11434/v1/chat/completions",
       "maxDiffLength": 4000,
       "timeout": 30000
     },
     "lmstudio": {
-      "model": "default",
+      "model": "google/gemma-4-e4b",
       "endpoint": "http://localhost:1234/v1/chat/completions",
       "maxDiffLength": 4000,
       "timeout": 30000
