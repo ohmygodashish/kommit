@@ -47,7 +47,7 @@ async function callProvider(providerName, providerConfig, apiKey, systemPrompt, 
 }
 
 function getProviderGroup(providerName) {
-  const openaiCompatible = ['openai', 'openrouter', 'ollama', 'lmStudio'];
+  const openaiCompatible = ['openai', 'openrouter', 'ollama', 'lmstudio'];
   if (openaiCompatible.includes(providerName)) return 'openai';
   if (providerName === 'anthropic') return 'anthropic';
   if (providerName === 'google') return 'google';

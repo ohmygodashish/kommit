@@ -112,7 +112,7 @@ async function main() {
   const providerConfig = config.providers[provider];
   const apiKey = getApiKey(provider, auth, process.env);
 
-  const needsKey = provider !== 'ollama' && provider !== 'lmStudio';
+  const needsKey = provider !== 'ollama' && provider !== 'lmstudio';
   if (needsKey && !apiKey) {
     console.error(`kommit: No API key found for provider '${provider}'. Run 'kommit --init' to configure.`);
     process.exit(1);

@@ -11,7 +11,7 @@ const PROVIDER_LABELS = {
   google: 'Google',
   openrouter: 'OpenRouter',
   ollama: 'Ollama (local)',
-  lmStudio: 'LM Studio (local)'
+  lmstudio: 'LM Studio (local)'
 };
 
 function getConfigDir() {
@@ -70,7 +70,7 @@ function getDefaultConfig() {
         maxDiffLength: 4000,
         timeout: 30000
       },
-      lmStudio: {
+      lmstudio: {
         model: 'default',
         endpoint: 'http://localhost:1234/v1/chat/completions',
         maxDiffLength: 4000,
@@ -167,7 +167,7 @@ export async function runInitWizard() {
       { value: 'google', label: PROVIDER_LABELS.google },
       { value: 'openrouter', label: PROVIDER_LABELS.openrouter },
       { value: 'ollama', label: PROVIDER_LABELS.ollama },
-      { value: 'lmStudio', label: PROVIDER_LABELS.lmStudio }
+      { value: 'lmstudio', label: PROVIDER_LABELS.lmstudio }
     ]
   });
 
@@ -175,7 +175,7 @@ export async function runInitWizard() {
     process.exit(0);
   }
 
-  const needsKey = provider !== 'ollama' && provider !== 'lmStudio';
+  const needsKey = provider !== 'ollama' && provider !== 'lmstudio';
   const newAuth = {};
 
   if (needsKey) {
@@ -264,7 +264,7 @@ export async function runSetWizard(config, auth) {
   }
 
   if (setting === 'defaultProvider') {
-    const noKeyProviders = ['ollama', 'lmStudio'];
+    const noKeyProviders = ['ollama', 'lmstudio'];
     const availableProviders = [];
 
     for (const name of Object.keys(config.providers || {})) {
@@ -334,7 +334,7 @@ export function resolveProvider(config, flags, env, auth = {}) {
   if (env.KOMMIT_PROVIDER) return env.KOMMIT_PROVIDER;
   if (config.defaultProvider) return config.defaultProvider;
 
-  const noKeyProviders = ['ollama', 'lmStudio'];
+  const noKeyProviders = ['ollama', 'lmstudio'];
   for (const name of Object.keys(config.providers || {})) {
     const hasKey = auth[name] && auth[name].length > 0;
     const needsNoKey = noKeyProviders.includes(name);
