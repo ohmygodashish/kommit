@@ -27,8 +27,8 @@ kommit
 
 ## Supported Providers
 
-- **Cloud Providers:** OpenAI, Anthropic, Google, OpenRouter
-- **Local Providers:** Ollama, LM Studio
+- **Cloud Providers:** [OpenAI](https://developers.openai.com/api/docs/models), [Anthropic](https://platform.claude.com/docs/en/about-claude/models/overview), Google, [OpenRouter](https://openrouter.ai/models?fmt=cards&output_modalities=text)
+- **Local Providers:** [Ollama](https://ollama.com/search), [LM Studio](https://lmstudio.ai/models)
 
 
 ## Usage

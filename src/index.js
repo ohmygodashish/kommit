@@ -9,7 +9,7 @@ import { generateMessage, isRetryable } from './llm.js';
 import { buildPrompt, parseResponse, validateSubject } from './prompt.js';
 import { promptAction, editMessage, promptError, withSpinner } from './ui.js';
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const flags = {
     init: false,
     set: false,
@@ -46,7 +46,7 @@ function parseArgs(argv) {
   return flags;
 }
 
-function getApiKey(provider, auth, env) {
+export function getApiKey(provider, auth, env) {
   const envMap = {
     openai: 'KOMMIT_OPENAI_API_KEY',
     anthropic: 'KOMMIT_ANTHROPIC_API_KEY',

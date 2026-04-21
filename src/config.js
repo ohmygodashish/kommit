@@ -89,7 +89,7 @@ async function fileExists(path) {
   }
 }
 
-function migrateConfig(config) {
+export function migrateConfig(config) {
   let migrated = false;
 
   if (!config.version || config.version < CURRENT_CONFIG_VERSION) {

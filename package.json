@@ -37,6 +37,9 @@
     "url": "https://github.com/ohmygodashish/kommit/issues"
   },
   "homepage": "https://github.com/ohmygodashish/kommit#readme",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
   "dependencies": {
     "@clack/prompts": "^1.2.0"
   }
