@@ -27,12 +27,9 @@ kommit
 
 ## Supported Providers
 
-- **OpenAI** (GPT-5.4-mini, GPT-5.4-nano, etc.)
-- **Anthropic** (Claude Haiku 4.5, etc.)
-- **Google** (Gemini 3.1 Flash Lite, etc.)
-- **OpenRouter** (unified API for many models)
-- **Ollama** (local models)
-- **LM Studio** (local models)
+- **Cloud Providers:** OpenAI, Anthropic, Google, OpenRouter
+- **Local Providers:** Ollama, LM Studio
+
 
 ## Usage
 
@@ -81,6 +78,7 @@ feat(auth): add JWT validation middleware
 [c] Cancel
 ```
 
+**All options:**
 - **[u]** — Commit with the suggested message (staged diff only)
 - **[s]** — Stage all tracked changes and commit (unstaged diff only)
 - **[e]** — Edit the subject and body inline
@@ -92,7 +90,7 @@ feat(auth): add JWT validation middleware
 Config lives in `~/.config/kommit/config.json`.
 API keys are stored separately in `~/.local/share/kommit/auth.json` so you can version-control your preferences without leaking secrets.
 
-We follow the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html):
+Kommit follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html):
 - Config: `$XDG_CONFIG_HOME/kommit/` (falls back to `~/.config/kommit/`)
 - Auth keys: `$XDG_DATA_HOME/kommit/` (falls back to `~/.local/share/kommit/`)
 
@@ -106,7 +104,7 @@ Set your default LLM provider in `~/.config/kommit/config.json`:
 }
 ```
 
-Supported values: `openai`, `anthropic`, `google`, `openrouter`, `ollama`, `lmStudio`.
+Supported values: `openai`, `anthropic`, `google`, `openrouter`, `ollama`, `lmstudio`.
 
 Override the default for a single run with the `--provider` flag:
 
@@ -196,40 +194,40 @@ This is useful when you want to switch providers or models without re-entering A
 ```json
 {
   "version": 1,
-  "defaultProvider": "openai",
+  "defaultProvider": "openrouter",
   "skillName": "my-team",
   "providers": {
     "openai": {
-      "model": "gpt-5.4-mini",
+      "model": "gpt-5.4-nano",
       "endpoint": "https://api.openai.com/v1/chat/completions",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "anthropic": {
-      "model": "claude-haiku-4.5",
+      "model": "claude-haiku-4-5",
       "endpoint": "https://api.anthropic.com/v1/messages",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "google": {
-      "model": "gemini-3.1-flash-lite",
+      "model": "gemini-3.1-flash-lite-preview",
       "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "openrouter": {
-      "model": "anthropic/claude-3.5-sonnet",
+      "model": "openai/gpt-5.4-nano",
       "endpoint": "https://openrouter.ai/api/v1/chat/completions",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "ollama": {
-      "model": "llama3.1",
+      "model": "default",
       "endpoint": "http://localhost:11434/v1/chat/completions",
       "maxDiffLength": 4000,
       "timeout": 30000
     },
-    "lmStudio": {
+    "lmstudio": {
       "model": "default",
       "endpoint": "http://localhost:1234/v1/chat/completions",
       "maxDiffLength": 4000,

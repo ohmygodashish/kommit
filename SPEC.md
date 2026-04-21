@@ -55,40 +55,40 @@ Separating keys from config allows users to version-control or sync `config.json
 ```json
 {
   "version": 1,
-  "defaultProvider": "openai",
+  "defaultProvider": "openrouter",
   "skillName": null,
   "providers": {
     "openai": {
-      "model": "gpt-5.4-mini",
+      "model": "gpt-5.4-nano",
       "endpoint": "https://api.openai.com/v1/chat/completions",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "anthropic": {
-      "model": "claude-haiku-4.5",
+      "model": "claude-haiku-4-5",
       "endpoint": "https://api.anthropic.com/v1/messages",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "google": {
-      "model": "gemini-3.1-flash-lite",
+      "model": "gemini-3.1-flash-lite-preview",
       "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "openrouter": {
-      "model": "anthropic/claude-3.5-sonnet",
+      "model": "openai/gpt-5.4-nano",
       "endpoint": "https://openrouter.ai/api/v1/chat/completions",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "ollama": {
-      "model": "llama3.1",
+      "model": "default",
       "endpoint": "http://localhost:11434/v1/chat/completions",
       "maxDiffLength": 4000,
       "timeout": 30000
     },
-    "lmStudio": {
+    "lmstudio": {
       "model": "default",
       "endpoint": "http://localhost:1234/v1/chat/completions",
       "maxDiffLength": 4000,
@@ -107,7 +107,7 @@ Separating keys from config allows users to version-control or sync `config.json
   "openrouter": "sk-or-..."
 }
 ```
-Note: `ollama` and `lmStudio` do not require API keys and are omitted.
+Note: `ollama` and `lmstudio` do not require API keys and are omitted.
 
 ### Skill File (`~/.agents/skills/{skillName}/SKILL.md`)
 An optional Markdown file that is appended to the system prompt when `skillName` is set. Skills are stored in `~/.agents/skills/{skillName}/SKILL.md` as modular, shareable prompt additions. This replaces the previous `customSystemPrompt` string field and the `useSkill` boolean with a composable skill system.
@@ -176,7 +176,7 @@ kommit --set
    - `defaultProvider`
    - `skillName`
 2. **If `defaultProvider`**:
-   - Show all providers with API keys in `auth.json`, plus `ollama` and `lmStudio` (always included)
+   - Show all providers with API keys in `auth.json`, plus `ollama` and `lmstudio` (always included)
    - After selecting a provider, prompt for model name (pre-filled with current model)
    - Updates `config.defaultProvider` and `config.providers[<selected>].model`
 3. **If `skillName`**:
@@ -214,40 +214,40 @@ Complete example of `~/.config/kommit/config.json`:
 ```json
 {
   "version": 1,
-  "defaultProvider": "openai",
+  "defaultProvider": "openrouter",
   "skillName": "my-team",
   "providers": {
     "openai": {
-      "model": "gpt-5.4-mini",
+      "model": "gpt-5.4-nano",
       "endpoint": "https://api.openai.com/v1/chat/completions",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "anthropic": {
-      "model": "claude-haiku-4.5",
+      "model": "claude-haiku-4-5",
       "endpoint": "https://api.anthropic.com/v1/messages",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "google": {
-      "model": "gemini-3.1-flash-lite",
+      "model": "gemini-3.1-flash-lite-preview",
       "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "openrouter": {
-      "model": "anthropic/claude-3.5-sonnet",
+      "model": "openai/gpt-5.4-nano",
       "endpoint": "https://openrouter.ai/api/v1/chat/completions",
       "maxDiffLength": 12000,
       "timeout": 30000
     },
     "ollama": {
-      "model": "llama3.1",
+      "model": "default",
       "endpoint": "http://localhost:11434/v1/chat/completions",
       "maxDiffLength": 4000,
       "timeout": 30000
     },
-    "lmStudio": {
+    "lmstudio": {
       "model": "default",
       "endpoint": "http://localhost:1234/v1/chat/completions",
       "maxDiffLength": 4000,
