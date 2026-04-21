@@ -1,6 +1,4 @@
-# kommit
-
-AI powered Conventional Commit message generator. Stop writing commit messages by hand.
+![Banner](images/kommit.png)
 
 ## Installation
 
@@ -13,9 +11,9 @@ Requires Node.js **24+**.
 ## Quick Start
 
 ```bash
-# Run the setup wizard on first use — generates ~/.config/kommit/config.json
-# and ~/.local/share/kommit/auth.json
-kommit --init
+# On first run (no config found), kommit will automatically launch the setup wizard.
+# This generates ~/.config/kommit/config.json and ~/.local/share/kommit/auth.json
+kommit
 
 # Add API keys for additional providers (merges into existing auth.json)
 kommit --init
