@@ -9,6 +9,7 @@ import { generateMessage, isRetryable } from './llm.js';
 import { buildPrompt, parseResponse, validateSubject } from './prompt.js';
 import { promptAction, editMessage, promptError, withSpinner } from './ui.js';
 import { parseArgs, getApiKey } from './args.js';
+import { copyToClipboard } from './clipboard.js';
 
 function printVerbose(label, content) {
   console.error(`\n=== ${label} ===\n${content}\n=== END ${label} ===\n`);
@@ -191,6 +192,20 @@ async function main() {
         process.off('SIGTERM', cleanup);
       }
 
+      process.exit(0);
+    }
+
+    if (action === 'copy') {
+      const fullMessage = currentMessage.body
+        ? `${currentMessage.subject}\n\n${currentMessage.body}`
+        : currentMessage.subject;
+
+      try {
+        await copyToClipboard(fullMessage);
+        console.log('\n📋 Copied to clipboard!\n');
+      } catch (err) {
+        console.error(`\nkommit: ${err.message}\n`);
+      }
       process.exit(0);
     }
 

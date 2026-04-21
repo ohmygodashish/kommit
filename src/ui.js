@@ -23,6 +23,7 @@ export async function promptAction(message, truncated, source) {
     message: 'What would you like to do?',
     options: [
       useOption,
+      { value: 'copy', label: '[y] Copy to clipboard' },
       { value: 'edit', label: '[e] Edit inline' },
       { value: 'regenerate', label: '[r] Regenerate' },
       { value: 'cancel', label: '[c] Cancel' }
