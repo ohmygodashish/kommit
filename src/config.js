@@ -32,31 +32,31 @@ function getDefaultConfig() {
     skillName: null,
     providers: {
       openai: {
-        model: 'gpt-5.4-mini',
+        model: 'gpt-5.4-nano',
         endpoint: 'https://api.openai.com/v1/chat/completions',
         maxDiffLength: 12000,
         timeout: 30000
       },
       anthropic: {
-        model: 'claude-haiku-4.5',
+        model: 'claude-haiku-4-5',
         endpoint: 'https://api.anthropic.com/v1/messages',
         maxDiffLength: 12000,
         timeout: 30000
       },
       google: {
-        model: 'gemini-3.1-flash-lite',
+        model: 'gemini-3.1-flash-lite-preview',
         endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
         maxDiffLength: 12000,
         timeout: 30000
       },
       openrouter: {
-        model: 'anthropic/claude-3.5-sonnet',
+        model: 'openai/gpt-5.4-nano',
         endpoint: 'https://openrouter.ai/api/v1/chat/completions',
         maxDiffLength: 12000,
         timeout: 30000
       },
       ollama: {
-        model: 'llama3.1',
+        model: 'qwen3.5:9b',
         endpoint: 'http://localhost:11434/v1/chat/completions',
         maxDiffLength: 4000,
         timeout: 30000
