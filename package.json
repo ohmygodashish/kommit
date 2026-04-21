@@ -1,0 +1,43 @@
+{
+  "name": "kommit-cli",
+  "version": "0.1.0",
+  "description": "AI powered Conventional Commit message generator",
+  "type": "module",
+  "main": "./src/index.js",
+  "bin": {
+    "kommit": "./bin/kommit"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "keywords": [
+    "git",
+    "commit",
+    "cli",
+    "llm",
+    "ai",
+    "conventional-commits",
+    "openai",
+    "anthropic",
+    "ollama"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ohmygodashish/kommit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ohmygodashish/kommit/issues"
+  },
+  "homepage": "https://github.com/ohmygodashish/kommit#readme",
+  "dependencies": {
+    "@clack/prompts": "^1.2.0"
+  }
+}
