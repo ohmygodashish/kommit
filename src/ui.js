@@ -1,6 +1,6 @@
 import * as prompts from '@clack/prompts';
 
-export async function promptAction(message, truncated) {
+export async function promptAction(message, truncated, source) {
   console.log('');
   console.log('Suggested commit message:');
   console.log('─────────────────────────');
@@ -15,10 +15,14 @@ export async function promptAction(message, truncated) {
   }
   console.log('');
 
+  const useOption = source === 'unstaged'
+    ? { value: 'stageAndUse', label: '[s] Stage all and use' }
+    : { value: 'use', label: '[u] Use this message' };
+
   const action = await prompts.select({
     message: 'What would you like to do?',
     options: [
-      { value: 'use', label: '[u] Use this message' },
+      useOption,
       { value: 'edit', label: '[e] Edit inline' },
       { value: 'regenerate', label: '[r] Regenerate' },
       { value: 'cancel', label: '[c] Cancel' }
