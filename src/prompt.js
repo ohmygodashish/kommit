@@ -5,7 +5,7 @@ import { join } from 'path';
 const BASE_SYSTEM_PROMPT = `You are a commit message generator. Analyze the provided git diff and produce a concise, accurate commit message following the Conventional Commits specification.
 
 Rules:
-- Format: <type>(file_name_without_extension (if a single file)): <description>
+- Format: <type>[mandatory scope]: <description>
 - Allowed types: feat, fix, docs, style, refactor, perf, test, chore, ci, build
 - Use imperative mood, present tense ("add" not "added" or "adding")
 - Subject line must be ≤ 72 characters
