@@ -65,7 +65,7 @@ function getDefaultConfig() {
         timeout: 30000
       },
       ollama: {
-        model: 'qwen3.5:9b',
+        model: 'default',
         endpoint: 'http://localhost:11434/v1/chat/completions',
         maxDiffLength: 4000,
         timeout: 30000
