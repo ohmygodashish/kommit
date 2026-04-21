@@ -3,7 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import process from 'process';
 
-import { loadConfig, runInitWizard, resolveProvider, resolveSkill } from './config.js';
+import { loadConfig, runInitWizard, runSetWizard, resolveProvider, resolveSkill } from './config.js';
 import { getDiff, commit, stageTracked } from './git.js';
 import { generateMessage, isRetryable } from './llm.js';
 import { buildPrompt, parseResponse, validateSubject } from './prompt.js';
@@ -12,6 +12,7 @@ import { promptAction, editMessage, promptError, withSpinner } from './ui.js';
 function parseArgs(argv) {
   const flags = {
     init: false,
+    set: false,
     provider: undefined,
     skill: undefined,
     dryRun: false,
@@ -23,6 +24,9 @@ function parseArgs(argv) {
     switch (arg) {
       case '--init':
         flags.init = true;
+        break;
+      case '--set':
+        flags.set = true;
         break;
       case '--provider':
         flags.provider = argv[++i];
@@ -65,6 +69,18 @@ async function main() {
 
   if (flags.init) {
     await runInitWizard();
+    process.exit(0);
+  }
+
+  if (flags.set) {
+    let config, auth;
+    try {
+      ({ config, auth } = await loadConfig());
+    } catch (err) {
+      console.error(`kommit: ${err.message}`);
+      process.exit(1);
+    }
+    await runSetWizard(config, auth);
     process.exit(0);
   }
 
