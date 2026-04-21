@@ -6,7 +6,7 @@
 npm install -g kommit-cli
 ```
 
-Requires Node.js **24+**.
+> **Note:** Kommit requires Node.js **24+**
 
 ## Quick Start
 
@@ -27,7 +27,7 @@ kommit
 
 ## Supported Providers
 
-- **Cloud Providers:** [OpenAI](https://developers.openai.com/api/docs/models), [Anthropic](https://platform.claude.com/docs/en/about-claude/models/overview), Google, [OpenRouter](https://openrouter.ai/models?fmt=cards&output_modalities=text)
+- **Cloud Providers:** [OpenAI](https://developers.openai.com/api/docs/models), [Anthropic](https://platform.claude.com/docs/en/about-claude/models/overview), [Google](https://ai.google.dev/gemini-api/docs/models), [OpenRouter](https://openrouter.ai/models?fmt=cards&output_modalities=text)
 - **Local Providers:** [Ollama](https://ollama.com/search), [LM Studio](https://lmstudio.ai/models)
 
 
