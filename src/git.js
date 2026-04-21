@@ -96,6 +96,17 @@ function truncateDiff(diff, maxLength) {
   return { truncatedDiff: diff, truncated: false };
 }
 
+export async function stageTracked() {
+  try {
+    await execGit(['add', '-u']);
+  } catch (err) {
+    throw Object.assign(
+      new Error(`git add failed:\n${err.stderr || err.message}`),
+      { code: 'stage_failed' }
+    );
+  }
+}
+
 export async function commit(messagePath) {
   try {
     await execGit(['commit', '-F', messagePath]);

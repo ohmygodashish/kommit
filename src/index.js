@@ -4,7 +4,7 @@ import { join } from 'path';
 import process from 'process';
 
 import { loadConfig, runInitWizard, resolveProvider, resolveSkill } from './config.js';
-import { getDiff, commit } from './git.js';
+import { getDiff, commit, stageTracked } from './git.js';
 import { generateMessage, isRetryable } from './llm.js';
 import { buildPrompt, parseResponse, validateSubject } from './prompt.js';
 import { promptAction, editMessage, promptError, withSpinner } from './ui.js';
@@ -174,16 +174,25 @@ async function main() {
   let regenerateCount = 0;
 
   while (true) {
-    const action = await promptAction(currentMessage, diffResult.truncated);
+    const action = await promptAction(currentMessage, diffResult.truncated, diffResult.source);
 
     if (action === 'cancel') {
       process.exit(0);
     }
 
-    if (action === 'use') {
+    if (action === 'use' || action === 'stageAndUse') {
       if (flags.dryRun) {
         console.log('\n(Dry run — not committing)\n');
         process.exit(0);
+      }
+
+      if (action === 'stageAndUse') {
+        try {
+          await stageTracked();
+        } catch (err) {
+          console.error(`kommit: ${err.message}`);
+          process.exit(1);
+        }
       }
 
       const tmpFile = join(tmpdir(), `kommit-msg-${Date.now()}-${process.pid}.txt`);
