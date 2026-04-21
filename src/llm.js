@@ -80,6 +80,9 @@ async function callOpenAICompatible(providerConfig, apiKey, systemPrompt, userPr
       signal
     });
   } catch (err) {
+    if (err.name === 'AbortError') {
+      throw err;
+    }
     throw new LLMError(`Network error: ${err.message}`, 'network');
   }
 
@@ -123,6 +126,9 @@ async function callAnthropic(providerConfig, apiKey, systemPrompt, userPrompt, s
       signal
     });
   } catch (err) {
+    if (err.name === 'AbortError') {
+      throw err;
+    }
     throw new LLMError(`Network error: ${err.message}`, 'network');
   }
 
@@ -172,6 +178,9 @@ async function callGoogle(providerConfig, apiKey, systemPrompt, userPrompt, sign
       signal
     });
   } catch (err) {
+    if (err.name === 'AbortError') {
+      throw err;
+    }
     throw new LLMError(`Network error: ${err.message}`, 'network');
   }
 
