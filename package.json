@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./src/index.js",
   "bin": {
-    "kommit": "./bin/kommit"
+    "kommit": "bin/kommit"
   },
   "files": [
     "bin/",
