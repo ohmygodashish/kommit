@@ -160,6 +160,33 @@ Env vars take precedence over file-based config. Naming convention:
 
 On `--init`, if an env var is detected, pre-fill the prompt and allow the user to accept or override it.
 
+### `--init` Behavior
+- **config.json**: Created only if it does not already exist. If present, it is **not modified** in any way.
+- **auth.json**: Created if missing. If it already exists, the selected provider's API key is **merged** into the existing file (other provider keys are preserved). This allows adding keys for multiple providers over multiple `--init` runs.
+
+### `--set` — Configuration Wizard
+A separate interactive wizard for modifying `config.json` without touching `auth.json`. Requires an existing config file.
+
+```
+kommit --set
+```
+
+**Flow:**
+1. Prompt: "What would you like to configure?"
+   - `defaultProvider`
+   - `skillName`
+2. **If `defaultProvider`**:
+   - Show all providers with API keys in `auth.json`, plus `ollama` and `lmStudio` (always included)
+   - After selecting a provider, prompt for model name (pre-filled with current model)
+   - Updates `config.defaultProvider` and `config.providers[<selected>].model`
+3. **If `skillName`**:
+   - Text input pre-filled with current `skillName` (empty string clears it to `null`)
+   - Updates `config.skillName`
+
+**Errors:**
+- Missing `config.json` → `kommit: Config not found. Run 'kommit --init' first.` (exit 1)
+- No available providers → `No providers available. Add API keys with 'kommit --init'.` (exit 1)
+
 ### Provider Resolution
 The active provider is resolved at runtime using the following priority (highest to lowest):
 
@@ -294,10 +321,18 @@ export async function saveConfig(config)
 export async function saveAuth(auth)
 
 /**
- * Runs interactive --init wizard. Creates config and auth.
+ * Runs interactive --init wizard. Creates config if missing; merges auth keys.
  * @returns {Promise<void>}
  */
 export async function runInitWizard()
+
+/**
+ * Runs interactive --set wizard. Modifies config without touching auth.
+ * @param {object} config
+ * @param {object} auth
+ * @returns {Promise<void>}
+ */
+export async function runSetWizard(config, auth)
 
 /**
  * Resolves active provider from flags, env, and config.
@@ -328,6 +363,13 @@ export function resolveSkill(config, flags, env)
  * @throws {GitError} code: 'not_a_repo' | 'no_changes'
  */
 export async function getDiff(providerConfig)
+
+/**
+ * Stages all tracked file modifications using git add -u.
+ * @returns {Promise<void>}
+ * @throws {GitError} code: 'stage_failed', includes stderr
+ */
+export async function stageTracked()
 
 /**
  * Commits using a temp file with git commit -F.
@@ -392,9 +434,10 @@ export function validateSubject(subject)
  * Displays the suggested message and prompts for action.
  * @param {{subject: string, body: string}} message
  * @param {boolean} truncated — whether diff was truncated
- * @returns {Promise<'use'|'edit'|'regenerate'|'cancel'>}
+ * @param {'staged'|'unstaged'} source — where the diff came from
+ * @returns {Promise<'use'|'stageAndUse'|'edit'|'regenerate'|'cancel'>}
  */
-export async function promptAction(message, truncated)
+export async function promptAction(message, truncated, source)
 
 /**
  * Inline editing of subject and body.
@@ -511,7 +554,8 @@ The `--- BEGIN/END GIT DIFF ---` delimiters reduce the risk of prompt injection 
 | Command | Behavior |
 |---------|----------|
 | `kommit` | Main flow: diff → generate → interactive prompt |
-| `kommit --init` | Run interactive setup wizard explicitly. Creates `~/.config/kommit/config.json` and `~/.local/share/kommit/auth.json` |
+| `kommit --init` | Run interactive setup wizard. Creates config if missing; merges auth keys |
+| `kommit --set` | Configure default provider, model, or skill name without touching auth |
 | `kommit --provider <name>` | Override default provider for this run |
 | `kommit --skill <name>` | Override skill for this run |
 | `kommit --dry-run` | Generate and show message; do not invoke `git commit` |
@@ -520,6 +564,7 @@ The `--- BEGIN/END GIT DIFF ---` delimiters reduce the risk of prompt injection 
 ### Argument Parsing
 Manually parse `process.argv.slice(2)`. No argument parsing dependency. Supported flags:
 - `--init`
+- `--set`
 - `--provider <name>`
 - `--skill <name>`
 - `--dry-run`
@@ -542,15 +587,17 @@ Replace session cookies with stateless JWT tokens
  to support API consumption and horizontal scaling.
 ─────────────────────────
 
-[u] Use this message
+[u] Use this message          (staged diff)
+[s] Stage all and use         (unstaged diff)
 [e] Edit inline
 [r] Regenerate
 [c] Cancel
 ```
 
 #### Options
-- **`[u]`** — Write the message to a temp file and run `git commit -F <tmpfile>`. On success, print the commit hash. Delete the temp file immediately afterward.
-- **`[e]`** — Inline editing: use `@clack/prompts` text input to edit the subject line. Then prompt for the body in a second text input (multiline if supported by the library, otherwise single-line with instruction to use `\n` for newlines). After editing, return to the `[u/e/r/c]` prompt.
+- **`[u]`** (staged only) — Write the message to a temp file and run `git commit -F <tmpfile>`. On success, print the commit hash. Delete the temp file immediately afterward.
+- **`[s]`** (unstaged only) — Run `git add -u` to stage all tracked file modifications, then write the message to a temp file and run `git commit -F <tmpfile>`. This prevents the empty-commit error that occurs when `git commit` is run with no staged changes.
+- **`[e]`** — Inline editing: use `@clack/prompts` text input to edit the subject line. Then prompt for the body in a second text input (multiline if supported by the library, otherwise single-line with instruction to use `\n` for newlines). After editing, return to the action prompt.
 - **`[r]`** — Call the LLM again. Append a subtle variation hint based on a retry counter:
   - 1st retry: `"Try to be more concise."`
   - 2nd retry: `"Focus on the 'why' rather than the 'what'."`
@@ -658,8 +705,12 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 
 ### Manual Testing Checklist
 - [ ] `--init` creates config and auth with correct permissions
+- [ ] `--init` skips existing config, merges new keys into existing auth
+- [ ] `--set` modifies defaultProvider and model
+- [ ] `--set` modifies skillName (including clearing to null)
+- [ ] `--set` fails gracefully when config is missing
 - [ ] Staged diff workflow
-- [ ] Unstaged fallback workflow
+- [ ] Unstaged fallback workflow with `[s] Stage all and use`
 - [ ] Diff truncation on large changesets
 - [ ] Each provider group (OpenAI-compatible, Anthropic, Google)
 - [ ] `[e]` inline editing
