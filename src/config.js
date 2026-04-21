@@ -5,6 +5,15 @@ import * as prompts from '@clack/prompts';
 
 const CURRENT_CONFIG_VERSION = 1;
 
+const PROVIDER_LABELS = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google',
+  openrouter: 'OpenRouter',
+  ollama: 'Ollama (local)',
+  lmStudio: 'LM Studio (local)'
+};
+
 function getConfigDir() {
   return process.env.XDG_CONFIG_HOME
     ? join(process.env.XDG_CONFIG_HOME, 'kommit')
@@ -153,12 +162,12 @@ export async function runInitWizard() {
   const provider = await prompts.select({
     message: 'Choose your default LLM provider:',
     options: [
-      { value: 'openai', label: 'OpenAI' },
-      { value: 'anthropic', label: 'Anthropic' },
-      { value: 'google', label: 'Google' },
-      { value: 'openrouter', label: 'OpenRouter' },
-      { value: 'ollama', label: 'Ollama (local)' },
-      { value: 'lmStudio', label: 'LM Studio (local)' }
+      { value: 'openai', label: PROVIDER_LABELS.openai },
+      { value: 'anthropic', label: PROVIDER_LABELS.anthropic },
+      { value: 'google', label: PROVIDER_LABELS.google },
+      { value: 'openrouter', label: PROVIDER_LABELS.openrouter },
+      { value: 'ollama', label: PROVIDER_LABELS.ollama },
+      { value: 'lmStudio', label: PROVIDER_LABELS.lmStudio }
     ]
   });
 
@@ -166,11 +175,8 @@ export async function runInitWizard() {
     process.exit(0);
   }
 
-  const config = getDefaultConfig();
-  config.defaultProvider = provider;
-
   const needsKey = provider !== 'ollama' && provider !== 'lmStudio';
-  const auth = {};
+  const newAuth = {};
 
   if (needsKey) {
     const envVarMap = {
@@ -205,13 +211,122 @@ export async function runInitWizard() {
       }
     }
 
-    auth[provider] = key;
+    newAuth[provider] = key;
+  }
+
+  // Config: create only if missing
+  const configPath = getConfigPath();
+  const configExists = await fileExists(configPath);
+
+  if (!configExists) {
+    const config = getDefaultConfig();
+    config.defaultProvider = provider;
+    await saveConfig(config);
+    console.log(`Created config at ${configPath}.`);
+  } else {
+    console.log(`Config already exists at ${configPath}. Skipping.`);
+  }
+
+  // Auth: merge new keys with existing
+  const authPath = getAuthPath();
+  const authExists = await fileExists(authPath);
+  let existingAuth = {};
+
+  if (authExists) {
+    const raw = await readFile(authPath, 'utf8');
+    existingAuth = JSON.parse(raw);
+  }
+
+  if (needsKey) {
+    const mergedAuth = { ...existingAuth, ...newAuth };
+    await saveAuth(mergedAuth);
+    console.log(authExists ? `Updated auth at ${authPath}.` : `Created auth at ${authPath}.`);
+  } else {
+    console.log('No API key needed for local providers.');
+  }
+
+  prompts.outro('Setup complete! Run `kommit` to generate commit messages.');
+}
+
+export async function runSetWizard(config, auth) {
+  prompts.intro('Configure kommit');
+
+  const setting = await prompts.select({
+    message: 'What would you like to configure?',
+    options: [
+      { value: 'defaultProvider', label: 'Default provider' },
+      { value: 'skillName', label: 'Skill name' }
+    ]
+  });
+
+  if (prompts.isCancel(setting)) {
+    process.exit(0);
+  }
+
+  if (setting === 'defaultProvider') {
+    const noKeyProviders = ['ollama', 'lmStudio'];
+    const availableProviders = [];
+
+    for (const name of Object.keys(config.providers || {})) {
+      const hasKey = auth[name] && auth[name].length > 0;
+      const isLocal = noKeyProviders.includes(name);
+      if (hasKey || isLocal) {
+        availableProviders.push(name);
+      }
+    }
+
+    if (availableProviders.length === 0) {
+      console.log('No providers available. Add API keys with `kommit --init`.');
+      process.exit(1);
+    }
+
+    const providerOptions = availableProviders.map(name => ({
+      value: name,
+      label: PROVIDER_LABELS[name] || name
+    }));
+
+    const selectedProvider = await prompts.select({
+      message: 'Choose your default provider:',
+      options: providerOptions
+    });
+
+    if (prompts.isCancel(selectedProvider)) {
+      process.exit(0);
+    }
+
+    const currentModel = config.providers[selectedProvider]?.model || '';
+    const model = await prompts.text({
+      message: 'Model name:',
+      initialValue: currentModel
+    });
+
+    if (prompts.isCancel(model)) {
+      process.exit(0);
+    }
+
+    config.defaultProvider = selectedProvider;
+    if (!config.providers[selectedProvider]) {
+      config.providers[selectedProvider] = {};
+    }
+    config.providers[selectedProvider].model = model.trim();
+  }
+
+  if (setting === 'skillName') {
+    const currentSkill = config.skillName || '';
+    const skill = await prompts.text({
+      message: 'Skill name (leave empty to clear):',
+      initialValue: currentSkill
+    });
+
+    if (prompts.isCancel(skill)) {
+      process.exit(0);
+    }
+
+    config.skillName = skill.trim() || null;
   }
 
   await saveConfig(config);
-  await saveAuth(auth);
-
-  prompts.outro('Setup complete! Run `kommit` to generate commit messages.');
+  prompts.outro('Configuration updated!');
 }
 
 export function resolveProvider(config, flags, env, auth = {}) {
