@@ -17,7 +17,7 @@ kommit
 # Add API keys for additional providers
 kommit --init
 
-# Configure default provider, model, or skill without touching auth
+# Configure default provider, model, or skill without touching config
 kommit --set
 ```
 
