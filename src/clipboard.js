@@ -1,6 +1,13 @@
-import { spawn } from 'child_process';
+import { spawn as _spawn } from 'child_process';
+
+let _spawnOverride = null;
+
+export function setSpawnForTesting(spawnFn) {
+  _spawnOverride = spawnFn;
+}
 
 function spawnClipboard(cmd, args, text) {
+  const spawn = _spawnOverride || _spawn;
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ['pipe', 'inherit', 'inherit'] });
 
@@ -21,8 +28,8 @@ function spawnClipboard(cmd, args, text) {
   });
 }
 
-export async function copyToClipboard(text) {
-  const platform = process.platform;
+export async function copyToClipboard(text, _platform) {
+  const platform = _platform || process.platform;
 
   if (platform === 'darwin') {
     return spawnClipboard('pbcopy', [], text);
