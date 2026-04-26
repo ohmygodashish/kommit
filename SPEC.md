@@ -9,6 +9,7 @@ A lightweight Node.js CLI utility that generates commit messages from git diffs 
 - Staged diff analysis with unstaged fallback
 - Intelligent diff truncation for large changesets
 - Inline editing of suggested messages
+- Copy message to clipboard (`[y]`) with cross-platform support (macOS, Windows, Linux)
 - Interactive first-run setup wizard (`--init`)
 - Optional skill file (`SKILL.md`) for user-defined prompt customization
 - Minimal, focused CLI with small dependencies allowed
@@ -24,11 +25,20 @@ kommit/
 │   └── kommit              # Executable entry point (shebang node)
 ├── src/
 │   ├── index.js            # Main entry: orchestrates flow, handles flags
+│   ├── args.js             # Manual CLI argument parsing
 │   ├── config.js           # Config & auth read/write, migration, env overrides
 │   ├── git.js              # Diff extraction, hunk parsing, intelligent truncation
 │   ├── llm.js              # Provider routing, API calls, timeouts, retries
 │   ├── prompt.js           # Prompt template engineering + skill loading
-│   └── ui.js               # Interactive prompts & inline editing
+│   ├── ui.js               # Interactive prompts & inline editing
+│   └── clipboard.js        # Cross-platform clipboard support (pbcopy, xclip, wl-copy, etc.)
+├── tests/
+│   ├── config.test.js
+│   ├── git.test.js
+│   ├── index.test.js
+│   ├── llm.test.js
+│   ├── prompt.test.js
+│   └── clipboard.test.js
 ├── package.json
 ├── README.md
 └── SPEC.md                 # This file
@@ -282,7 +292,13 @@ Complete example of `~/.local/share/kommit/auth.json`:
 +-----------+     +-----------+     +-----+-----+
 |git commit |<----|  git.js   |<----|   ui.js   |
 | -F tmpfile|     |  commit() |     | show/edit |
-+-----------+     +-----------+     +-----------+
++-----------+     +-----------+     +-----+-----+
+                                          |
+                                          v
+                                   +-----+------+
+                                   | clipboard.js|
+                                   | copyToClip  |
+                                   +------------+
 ```
 
 Orchestration in `src/index.js`:
@@ -291,6 +307,7 @@ Orchestration in `src/index.js`:
 3. Resolve provider
 4. `git.getDiff()` → `prompt.buildPrompt()` → `llm.generate()` → `ui.show()`
 5. On `[u]`, write to temp file → `git.commit(tmpfile)`
+6. On `[y]`, `clipboard.copyToClipboard(message)`
 
 ---
 
@@ -463,6 +480,30 @@ export async function promptError(error, canRetry)
 export async function withSpinner(promise, message)
 ```
 
+### `src/clipboard.js`
+```js
+/**
+ * Copies text to the system clipboard.
+ * @param {string} text — text to copy
+ * @param {string} _platform — optional platform override (for testing)
+ * @returns {Promise<void>}
+ * @throws {Error} if no clipboard utility is available
+ */
+export async function copyToClipboard(text, _platform)
+
+/**
+ * Sets a mock spawn function for testing.
+ * Pass null to reset to real spawn.
+ * @param {Function|null} spawnFn
+ */
+export function setSpawnForTesting(spawnFn)
+```
+
+Cross-platform clipboard support:
+- **macOS** — Uses built-in `pbcopy`
+- **Windows** — Uses built-in `clip.exe`
+- **Linux** — Tries `xclip`, then `xsel`, then `wl-copy` in order. Collects all errors and continues to the next tool on any failure (ENOENT, non-zero exit, etc.). If all three fail, throws a descriptive error with diagnostic details.```
+
 ---
 
 ## Git Diff Handling
@@ -589,6 +630,7 @@ Replace session cookies with stateless JWT tokens
 
 [u] Use this message          (staged diff)
 [s] Stage all and use         (unstaged diff)
+[y] Copy to clipboard
 [e] Edit inline
 [r] Regenerate
 [c] Cancel
@@ -597,6 +639,7 @@ Replace session cookies with stateless JWT tokens
 #### Options
 - **`[u]`** (staged only) — Write the message to a temp file and run `git commit -F <tmpfile>`. On success, print the commit hash. Delete the temp file immediately afterward.
 - **`[s]`** (unstaged only) — Run `git add -u` to stage all tracked file modifications, then write the message to a temp file and run `git commit -F <tmpfile>`. This prevents the empty-commit error that occurs when `git commit` is run with no staged changes.
+- **`[y]`** — Copy the full message (subject + body) to the system clipboard. Exits with code `0` on success, code `1` on failure. Cross-platform support: macOS (`pbcopy`), Windows (`clip.exe`), Linux (`xclip` → `xsel` → `wl-copy` fallback chain).
 - **`[e]`** — Inline editing: use `@clack/prompts` text input to edit the subject line. Then prompt for the body in a second text input (multiline if supported by the library, otherwise single-line with instruction to use `\n` for newlines). After editing, return to the action prompt.
 - **`[r]`** — Call the LLM again. Append a subtle variation hint based on a retry counter:
   - 1st retry: `"Try to be more concise."`
@@ -635,7 +678,7 @@ None required for pure JavaScript.
 ```json
 {
   "name": "kommit-cli",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "AI powered Conventional Commit message generator",
   "type": "module",
   "main": "./src/index.js",
@@ -647,10 +690,13 @@ None required for pure JavaScript.
     "node": ">=24.0.0"
   },
   "keywords": ["git", "commit", "cli", "llm", "ai", "conventional-commits"],
-  "author": "",
+  "author": "ohmygodashish",
   "license": "MIT",
   "dependencies": {
     "@clack/prompts": "^1.2.0"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
   }
 }
 ```
@@ -676,6 +722,7 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 | LLM returns non-conventional subject | Show anyway but warn user; allow edit |
 | Git commit fails (e.g., hooks) | `kommit: git commit failed:\n<stderr>`. Exit with git's exit code |
 | Skill file not found | `kommit: Skill '{name}' not found at {path}. Using base prompt.` (warning, not fatal) |
+| Clipboard copy fails | `kommit: Clipboard not available. Install one of: xclip, xsel, or wl-clipboard.`. Exits with code `1` |
 
 ---
 
@@ -698,6 +745,8 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 | `prompt.js` | Test JSON parsing with/without fences; test Conventional Commit regex against valid and invalid subjects; test skill file loading |
 | `config.js` | Test migration logic (v0 → v1, v1 → v2); test provider resolution priority |
 | `llm.js` | Mock `fetch` for each provider group; test retry logic; test timeout behavior |
+| `clipboard.js` | Mock `spawn` to verify platform-specific commands (pbcopy, clip.exe, xclip/xsel/wl-copy); test Linux fallback chain on ENOENT, non-zero exit, and mixed errors; verify error diagnostics include all tool failures |
+| `args.js` | Test flag parsing for all supported options; test API key resolution priority (env > file) |
 
 ### Integration Tests
 - Mock LLM server (local HTTP server returning canned responses)
@@ -719,6 +768,8 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 - [ ] `--verbose`
 - [ ] `--provider` override
 - [ ] `--skill` override
+- [ ] `[y]` copy to clipboard (macOS/Linux/Windows)
+- [ ] Clipboard fallback chain on Linux (xclip absent, xclip broken, etc.)
 - [ ] Skill loading from `~/.agents/skills/{name}/SKILL.md`
 - [ ] Error handling: no git repo, no changes, bad API key, timeout, missing skill
 
