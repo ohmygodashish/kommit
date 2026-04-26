@@ -38,35 +38,23 @@ export async function copyToClipboard(text) {
   try {
     return await spawnClipboard('xclip', ['-selection', 'clipboard'], text);
   } catch (err) {
-    if (err.code === 'ENOENT') {
-      errors.push('xclip not found');
-    } else {
-      throw err;
-    }
+    errors.push(`xclip: ${err.message}`);
   }
 
   try {
     return await spawnClipboard('xsel', ['--clipboard', '--input'], text);
   } catch (err) {
-    if (err.code === 'ENOENT') {
-      errors.push('xsel not found');
-    } else {
-      throw err;
-    }
+    errors.push(`xsel: ${err.message}`);
   }
 
   try {
     return await spawnClipboard('wl-copy', [], text);
   } catch (err) {
-    if (err.code === 'ENOENT') {
-      errors.push('wl-copy not found');
-    } else {
-      throw err;
-    }
+    errors.push(`wl-copy: ${err.message}`);
   }
 
   throw new Error(
-    'Clipboard not available. Install one of: xclip, xsel, or wl-clipboard.' +
-    '\n  e.g., sudo apt install xclip'
+    'Clipboard not available. Install one of: xclip, xsel, or wl-clipboard.\n' +
+    `  Details: ${errors.join(' | ')}`
   );
 }
