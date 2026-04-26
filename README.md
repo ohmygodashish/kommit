@@ -54,6 +54,7 @@ feat(auth): add JWT validation middleware
 ─────────────────────────
 
 [u] Use this message
+[y] Copy to clipboard
 [e] Edit inline
 [r] Regenerate
 [c] Cancel
@@ -69,6 +70,7 @@ feat(auth): add JWT validation middleware
 ─────────────────────────
 
 [s] Stage all and use
+[y] Copy to clipboard
 [e] Edit inline
 [r] Regenerate
 [c] Cancel
@@ -77,6 +79,7 @@ feat(auth): add JWT validation middleware
 **All options:**
 - **[u]** — Commit with the suggested message (staged diff only)
 - **[s]** — Stage all tracked changes and commit (unstaged diff only)
+- **[y]** — Copy the message to clipboard
 - **[e]** — Edit the subject and body inline
 - **[r]** — Regenerate with a variation hint
 - **[c]** — Cancel
@@ -252,7 +255,7 @@ This is useful when you want to switch providers or models without re-entering A
 2. Intelligently truncates large diffs at hunk boundaries
 3. Sends the diff to your chosen LLM with a structured prompt
 4. Parses the JSON response into a Conventional Commit
-5. Lets you review, edit, regenerate, or commit
+5. Lets you review, edit, regenerate, copy to clipboard, or commit
 6. For unstaged diffs, offers to stage all tracked changes before committing
 
 ## License
