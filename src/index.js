@@ -203,10 +203,11 @@ async function main() {
       try {
         await copyToClipboard(fullMessage);
         console.log('\n📋 Copied to clipboard!\n');
+        process.exit(0);
       } catch (err) {
         console.error(`\nkommit: ${err.message}\n`);
+        process.exit(1);
       }
-      process.exit(0);
     }
 
     if (action === 'edit') {
