@@ -41,6 +41,8 @@ kommit [options]
 | `--skill <name>` | Override skill for this run |
 | `--dry-run` | Generate and show the message without committing |
 | `--verbose` | Print raw prompts, responses, and git commands |
+| `--help`, `-h` | Show help message |
+| `--version`, `-v` | Show version number |
 
 ### Interactive Flow
 
