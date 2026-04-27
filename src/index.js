@@ -8,7 +8,7 @@ import { getDiff, commit, stageTracked } from './git.js';
 import { generateMessage, isRetryable } from './llm.js';
 import { buildPrompt, parseResponse, validateSubject } from './prompt.js';
 import { promptAction, editMessage, promptError, withSpinner } from './ui.js';
-import { parseArgs, getApiKey } from './args.js';
+import { parseArgs, getApiKey, printHelp, getVersion } from './args.js';
 import { copyToClipboard } from './clipboard.js';
 
 function printVerbose(label, content) {
@@ -17,6 +17,17 @@ function printVerbose(label, content) {
 
 async function main() {
   const flags = parseArgs(process.argv.slice(2));
+
+  if (flags.help) {
+    printHelp();
+    process.exit(0);
+  }
+
+  if (flags.version) {
+    const version = await getVersion();
+    console.log(version);
+    process.exit(0);
+  }
 
   if (flags.init) {
     await runInitWizard();
