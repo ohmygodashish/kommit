@@ -601,6 +601,8 @@ The `--- BEGIN/END GIT DIFF ---` delimiters reduce the risk of prompt injection 
 | `kommit --skill <name>` | Override skill for this run |
 | `kommit --dry-run` | Generate and show message; do not invoke `git commit` |
 | `kommit --verbose` | Print raw prompt, raw response, and exact git commands to stderr |
+| `kommit --help`, `-h` | Show help message and exit |
+| `kommit --version`, `-v` | Show version number and exit |
 
 ### Argument Parsing
 Manually parse `process.argv.slice(2)`. No argument parsing dependency. Supported flags:
@@ -610,6 +612,10 @@ Manually parse `process.argv.slice(2)`. No argument parsing dependency. Supporte
 - `--skill <name>`
 - `--dry-run`
 - `--verbose`
+- `--help`, `-h`
+- `--version`, `-v`
+
+`--help` and `--version` are handled before any config loading or git operations, so they work even when `config.json` is missing.
 
 ### First-Run Detection
 On startup, check for `~/.config/kommit/config.json`:
