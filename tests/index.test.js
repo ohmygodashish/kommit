@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { parseArgs, getApiKey } from '../src/args.js';
+import { parseArgs, getApiKey, getVersion } from '../src/args.js';
 
 describe('index.js', () => {
   describe('parseArgs', () => {
@@ -33,6 +33,27 @@ describe('index.js', () => {
     it('parses --verbose', () => {
       const flags = parseArgs(['--verbose']);
       assert.strictEqual(flags.verbose, true);
+    });
+
+    it('parses --help', () => {
+      const flags = parseArgs(['--help']);
+      assert.strictEqual(flags.help, true);
+      assert.strictEqual(flags.init, false);
+    });
+
+    it('parses -h alias', () => {
+      const flags = parseArgs(['-h']);
+      assert.strictEqual(flags.help, true);
+    });
+
+    it('parses --version', () => {
+      const flags = parseArgs(['--version']);
+      assert.strictEqual(flags.version, true);
+    });
+
+    it('parses -v alias', () => {
+      const flags = parseArgs(['-v']);
+      assert.strictEqual(flags.version, true);
     });
 
     it('ignores unknown flags', () => {
@@ -72,6 +93,14 @@ describe('index.js', () => {
     it('returns empty string when no key', () => {
       const key = getApiKey('google', {}, {});
       assert.strictEqual(key, '');
+    });
+  });
+
+  describe('getVersion', () => {
+    it('returns version from package.json', async () => {
+      const version = await getVersion();
+      assert.strictEqual(typeof version, 'string');
+      assert.ok(version.match(/^\d+\.\d+\.\d+/));
     });
   });
 });
