@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { resolveProvider, resolveSkill, migrateConfig } from '../src/config.js';
+import { resolveProvider, resolveSkill, migrateConfig, getAvailableProviders } from '../src/config.js';
 
 describe('config.js', () => {
   describe('resolveProvider', () => {
@@ -82,6 +82,39 @@ describe('config.js', () => {
       const { config, migrated } = migrateConfig(current);
       assert.strictEqual(migrated, false);
       assert.strictEqual(config.defaultProvider, 'openai');
+    });
+  });
+
+  describe('getAvailableProviders', () => {
+    const config = {
+      providers: { openai: {}, anthropic: {}, google: {}, openrouter: {}, ollama: {}, lmstudio: {} }
+    };
+
+    it('returns providers with API keys', () => {
+      const auth = { openai: 'sk-xxx', anthropic: 'sk-ant' };
+      const result = getAvailableProviders(config, auth);
+      assert.ok(result.includes('openai'));
+      assert.ok(result.includes('anthropic'));
+      assert.ok(!result.includes('google'));
+    });
+
+    it('includes local providers without keys', () => {
+      const auth = {};
+      const result = getAvailableProviders(config, auth);
+      assert.ok(result.includes('ollama'));
+      assert.ok(result.includes('lmstudio'));
+      assert.ok(!result.includes('openai'));
+    });
+
+    it('returns empty array when no providers configured', () => {
+      const result = getAvailableProviders({ providers: {} }, {});
+      assert.deepStrictEqual(result, []);
+    });
+
+    it('excludes providers missing from config', () => {
+      const auth = { unknown: 'key' };
+      const result = getAvailableProviders(config, auth);
+      assert.ok(!result.includes('unknown'));
     });
   });
 });
