@@ -1,5 +1,27 @@
 import * as prompts from '@clack/prompts';
 
+let _selectOverride = null;
+let _isCancelOverride = null;
+
+export function setSelectForTesting(selectFn, isCancelFn) {
+  _selectOverride = selectFn || null;
+  _isCancelOverride = isCancelFn || null;
+}
+
+function _select(options) {
+  if (_selectOverride) {
+    return _selectOverride(options);
+  }
+  return prompts.select(options);
+}
+
+function _isCancel(value) {
+  if (_isCancelOverride) {
+    return _isCancelOverride(value);
+  }
+  return prompts.isCancel(value);
+}
+
 export async function promptAction(message, truncated, source) {
   console.log('');
   console.log('Suggested commit message:');
@@ -19,7 +41,7 @@ export async function promptAction(message, truncated, source) {
     ? { value: 'stageAndUse', label: '[s] Stage all and use' }
     : { value: 'use', label: '[u] Use this message' };
 
-  const action = await prompts.select({
+  const action = await _select({
     message: 'What would you like to do?',
     options: [
       useOption,
@@ -30,7 +52,7 @@ export async function promptAction(message, truncated, source) {
     ]
   });
 
-  if (prompts.isCancel(action)) {
+  if (_isCancel(action)) {
     return 'cancel';
   }
 
@@ -62,22 +84,41 @@ export async function editMessage(message) {
   };
 }
 
-export async function promptError(error, canRetry) {
+export async function promptError(error, canRetry, availableProviders = []) {
   const options = [
     ...(canRetry ? [{ value: 'retry', label: '[r] Retry' }] : []),
+    ...(availableProviders.length > 0 ? [{ value: 'switch', label: '[f] Retry with another provider' }] : []),
     { value: 'cancel', label: '[c] Cancel' }
   ];
 
-  const action = await prompts.select({
+  const action = await _select({
     message: `Error: ${error.message}`,
     options
   });
 
-  if (prompts.isCancel(action)) {
+  if (_isCancel(action)) {
     return 'cancel';
   }
 
   return action;
+}
+
+export async function promptSelectProvider(providers) {
+  const options = providers.map(name => ({
+    value: name,
+    label: name
+  }));
+
+  const selected = await _select({
+    message: 'Choose a fallback provider:',
+    options
+  });
+
+  if (_isCancel(selected)) {
+    return null;
+  }
+
+  return selected;
 }
 
 export async function withSpinner(promise, message) {
