@@ -3,11 +3,11 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import process from 'process';
 
-import { loadConfig, runInitWizard, runSetWizard, resolveProvider, resolveSkill } from './config.js';
+import { loadConfig, runInitWizard, runSetWizard, resolveProvider, resolveSkill, getAvailableProviders } from './config.js';
 import { getDiff, commit, stageTracked } from './git.js';
 import { generateMessage, isRetryable } from './llm.js';
 import { buildPrompt, parseResponse, validateSubject } from './prompt.js';
-import { promptAction, editMessage, promptError, withSpinner } from './ui.js';
+import { promptAction, editMessage, promptError, promptSelectProvider, withSpinner } from './ui.js';
 import { parseArgs, getApiKey, printHelp, getVersion } from './args.js';
 import { copyToClipboard } from './clipboard.js';
 
@@ -109,13 +109,20 @@ async function main() {
     printVerbose('USER PROMPT', userPrompt);
   }
 
+  const originalProvider = provider;
+  const originalProviderConfig = providerConfig;
+  const originalApiKey = apiKey;
+
+  let currentProvider = provider;
+  let currentProviderConfig = providerConfig;
+  let currentApiKey = apiKey;
   let retryCount = 0;
   let message = null;
 
   while (true) {
     try {
       const rawResponse = await withSpinner(
-        generateMessage(provider, providerConfig, apiKey, systemPrompt, userPrompt),
+        generateMessage(currentProvider, currentProviderConfig, currentApiKey, systemPrompt, userPrompt),
         'Generating commit message...'
       );
 
@@ -140,10 +147,25 @@ async function main() {
       break;
     } catch (err) {
       const canRetry = isRetryable(err) && retryCount < 2;
-      const action = await promptError(err, canRetry);
+      const available = getAvailableProviders(config, auth, process.env).filter(p => p !== currentProvider);
+      const action = await promptError(err, canRetry, available);
+
       if (action === 'cancel') {
         process.exit(1);
       }
+
+      if (action === 'switch') {
+        const selected = await promptSelectProvider(available);
+        if (!selected) {
+          process.exit(1);
+        }
+        currentProvider = selected;
+        currentProviderConfig = config.providers[selected];
+        currentApiKey = getApiKey(selected, auth, process.env);
+        retryCount = 0;
+        continue;
+      }
+
       retryCount++;
     }
   }
@@ -238,11 +260,14 @@ async function main() {
 
       let regenRetryCount = 0;
       let regenerated = false;
+      let regenCurrentProvider = originalProvider;
+      let regenCurrentProviderConfig = originalProviderConfig;
+      let regenCurrentApiKey = originalApiKey;
 
       while (!regenerated) {
         try {
           const rawResponse = await withSpinner(
-            generateMessage(provider, providerConfig, apiKey, systemPrompt, modifiedUserPrompt),
+            generateMessage(regenCurrentProvider, regenCurrentProviderConfig, regenCurrentApiKey, systemPrompt, modifiedUserPrompt),
             'Regenerating commit message...'
           );
 
@@ -264,10 +289,29 @@ async function main() {
           regenerated = true;
         } catch (err) {
           const canRetry = isRetryable(err) && regenRetryCount < 2;
-          const errorAction = await promptError(err, canRetry);
+          const available = getAvailableProviders(config, auth, process.env).filter(p => p !== regenCurrentProvider);
+          const errorAction = await promptError(err, canRetry, available);
+
           if (errorAction === 'cancel') {
             break;
           }
+
+          if (errorAction === 'switch') {
+            const selected = await promptSelectProvider(available);
+            if (!selected) {
+              break;
+            }
+            regenCurrentProvider = selected;
+            regenCurrentProviderConfig = config.providers[selected];
+            regenCurrentApiKey = getApiKey(selected, auth, process.env);
+            regenRetryCount = 0;
+            continue;
+          }
+
+          // Retry — reset to original provider
+          regenCurrentProvider = originalProvider;
+          regenCurrentProviderConfig = originalProviderConfig;
+          regenCurrentApiKey = originalApiKey;
           regenRetryCount++;
         }
       }

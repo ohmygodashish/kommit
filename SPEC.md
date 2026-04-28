@@ -368,6 +368,14 @@ export function resolveProvider(config, flags, env)
  * @returns {string|null} skill name or null
  */
 export function resolveSkill(config, flags, env)
+
+/**
+ * Returns all configured providers that have API keys or are local (no key needed).
+ * @param {object} config
+ * @param {object} auth
+ * @returns {string[]}
+ */
+export function getAvailableProviders(config, auth)
 ```
 
 ### `src/git.js`
@@ -469,7 +477,14 @@ export async function editMessage(message)
  * @param {boolean} canRetry
  * @returns {Promise<'retry'|'cancel'>}
  */
-export async function promptError(error, canRetry)
+export async function promptError(error, canRetry, availableProviders)
+
+/**
+ * Prompts user to select a fallback provider from a list.
+ * @param {string[]} providers
+ * @returns {Promise<string|null>} selected provider or null if cancelled
+ */
+export async function promptSelectProvider(providers)
 
 /**
  * Wraps a promise in a loading spinner.
@@ -478,6 +493,36 @@ export async function promptError(error, canRetry)
  * @returns {Promise<T>}
  */
 export async function withSpinner(promise, message)
+```
+
+### `src/args.js`
+```js
+/**
+ * Parses process.argv into flags object.
+ * @param {string[]} argv
+ * @returns {{init: boolean, set: boolean, provider?: string, skill?: string, dryRun: boolean, verbose: boolean, help: boolean, version: boolean}}
+ */
+export function parseArgs(argv)
+
+/**
+ * Prints compact help text to stdout.
+ */
+export function printHelp()
+
+/**
+ * Returns version string from package.json.
+ * @returns {Promise<string>}
+ */
+export async function getVersion()
+
+/**
+ * Resolves API key from env var or auth file.
+ * @param {string} provider
+ * @param {object} auth
+ * @param {object} env
+ * @returns {string}
+ */
+export function getApiKey(provider, auth, env)
 ```
 
 ### `src/clipboard.js`
@@ -662,11 +707,16 @@ Replace session cookies with stateless JWT tokens
 - On timeout, print `"kommit: LLM request timed out after {timeout}ms"` and offer `[r]etry` or `[c]ancel`.
 
 ### Retry Strategy
-- **Max 2 retries** (3 attempts total).
+- **Max 2 retries** (3 attempts total) per provider.
 - Only retry on **transient errors**: network failures (`fetch` throws), HTTP `5xx`, or timeouts.
 - **Do not retry** on `4xx` errors (bad key, invalid request) — these will not fix themselves.
 - No exponential backoff; immediate retry is sufficient for personal use.
-- On final failure, show the HTTP status and error body, then offer `[r]etry` (resets retry counter) or `[c]ancel`.
+- On transient failure, the user is offered three options:
+  - **`[r] Retry`** — Retry with the same provider (up to 2 retries)
+  - **`[f] Retry with another provider`** — Switch to a different configured provider with a valid API key. The retry counter resets for the new provider.
+  - **`[c] Cancel`** — Exit with code `1`
+- **Fallback is temporary** — The original provider remains the default in `config.json`. Subsequent `kommit` runs use the original provider.
+- **Regeneration uses original provider** — When the user hits `[r] Regenerate` after a successful fallback, the LLM call uses the original provider, not the fallback. The fallback option is available again if the original provider fails during regeneration.
 
 ---
 
@@ -722,7 +772,7 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 | No changes (staged or unstaged) | `kommit: No changes detected to commit.` |
 | Config missing | `kommit: Config not found. Run 'kommit --init' to set up.` |
 | Config malformed | `kommit: Failed to parse config: <parse error>` |
-| LLM API error (transient: 5xx, network, timeout) | `kommit: LLM API error (<status>): <message>`. Offer `[r]etry` (up to 2) or `[c]ancel` |
+| LLM API error (transient: 5xx, network, timeout) | `kommit: LLM API error (<status>): <message>`. Offer `[r]etry` (up to 2), `[f] Retry with another provider`, or `[c]ancel` |
 | LLM API error (4xx / non-retryable) | `kommit: LLM API error (<status>): <message>`. Offer `[c]ancel` only |
 | LLM returns invalid JSON | Show raw output with warning; allow edit |
 | LLM returns non-conventional subject | Show anyway but warn user; allow edit |
@@ -776,6 +826,9 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 - [ ] `--skill` override
 - [ ] `[y]` copy to clipboard (macOS/Linux/Windows)
 - [ ] Clipboard fallback chain on Linux (xclip absent, xclip broken, etc.)
+- [ ] `[f] Retry with another provider` on transient API error
+- [ ] Provider fallback resets to original provider on next `kommit` run
+- [ ] Regeneration uses original provider after fallback
 - [ ] Skill loading from `~/.agents/skills/{name}/SKILL.md`
 - [ ] Error handling: no git repo, no changes, bad API key, timeout, missing skill
 

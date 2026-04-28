@@ -260,6 +260,8 @@ This is useful when you want to switch providers or models without re-entering A
 5. Lets you review, edit, regenerate, copy to clipboard, or commit
 6. For unstaged diffs, offers to stage all tracked changes before committing
 
+> **Tip:** If your default provider is temporarily unavailable (timeout, network error, or 5xx), kommit will offer to retry with another configured provider. The fallback is temporary, your default provider stays unchanged.
+
 ## License
 
 [MIT License](LICENSE)

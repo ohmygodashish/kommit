@@ -352,3 +352,26 @@ export function resolveSkill(config, flags, env) {
   if (config.skillName !== undefined) return config.skillName;
   return null;
 }
+
+export function getAvailableProviders(config, auth, env = {}) {
+  const noKeyProviders = ['ollama', 'lmstudio'];
+  const envMap = {
+    openai: 'KOMMIT_OPENAI_API_KEY',
+    anthropic: 'KOMMIT_ANTHROPIC_API_KEY',
+    google: 'KOMMIT_GOOGLE_API_KEY',
+    openrouter: 'KOMMIT_OPENROUTER_API_KEY'
+  };
+  const available = [];
+
+  for (const name of Object.keys(config.providers || {})) {
+    const envVar = envMap[name];
+    const hasKey = (auth[name] && auth[name].length > 0) ||
+                    (envVar && env[envVar] && env[envVar].length > 0);
+    const isLocal = noKeyProviders.includes(name);
+    if (hasKey || isLocal) {
+      available.push(name);
+    }
+  }
+
+  return available;
+}
