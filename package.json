@@ -1,6 +1,6 @@
 {
   "name": "kommit-cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "AI powered Conventional Commit message generator",
   "type": "module",
   "main": "./src/index.js",
