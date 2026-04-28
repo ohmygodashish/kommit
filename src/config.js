@@ -352,3 +352,18 @@ export function resolveSkill(config, flags, env) {
   if (config.skillName !== undefined) return config.skillName;
   return null;
 }
+
+export function getAvailableProviders(config, auth) {
+  const noKeyProviders = ['ollama', 'lmstudio'];
+  const available = [];
+
+  for (const name of Object.keys(config.providers || {})) {
+    const hasKey = auth[name] && auth[name].length > 0;
+    const isLocal = noKeyProviders.includes(name);
+    if (hasKey || isLocal) {
+      available.push(name);
+    }
+  }
+
+  return available;
+}
