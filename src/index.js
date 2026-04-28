@@ -147,7 +147,7 @@ async function main() {
       break;
     } catch (err) {
       const canRetry = isRetryable(err) && retryCount < 2;
-      const available = getAvailableProviders(config, auth).filter(p => p !== currentProvider);
+      const available = getAvailableProviders(config, auth, process.env).filter(p => p !== currentProvider);
       const action = await promptError(err, canRetry, available);
 
       if (action === 'cancel') {
@@ -289,7 +289,7 @@ async function main() {
           regenerated = true;
         } catch (err) {
           const canRetry = isRetryable(err) && regenRetryCount < 2;
-          const available = getAvailableProviders(config, auth).filter(p => p !== originalProvider);
+          const available = getAvailableProviders(config, auth, process.env).filter(p => p !== regenCurrentProvider);
           const errorAction = await promptError(err, canRetry, available);
 
           if (errorAction === 'cancel') {
