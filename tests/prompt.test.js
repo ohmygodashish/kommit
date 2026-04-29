@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { parseResponse, validateSubject, buildPrompt } from '../src/prompt.js';
+import { parseResponse, parseMultiResponse, validateSubject, buildPrompt, buildMultiCommitPrompt } from '../src/prompt.js';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -100,6 +100,58 @@ describe('prompt.js', () => {
       const result = await buildPrompt('diff', config);
       assert.ok(result.warning.includes("Skill 'missing-skill-xyz' not found"));
       assert.ok(result.warning.includes('Using base prompt'));
+    });
+  });
+
+  describe('buildMultiCommitPrompt', () => {
+    it('includes the file list and multi-commit instructions', async () => {
+      const config = { _resolvedSkill: null };
+      const result = await buildMultiCommitPrompt('diff body', [
+        { status: 'M ', displayPath: 'src/index.js' },
+        { status: '??', displayPath: 'tests/new.test.js' }
+      ], config);
+
+      assert.ok(result.system.includes('Split the changes into multiple logical commits'));
+      assert.ok(result.user.includes('BEGIN FILE LIST'));
+      assert.ok(result.user.includes('[M ] src/index.js'));
+      assert.ok(result.user.includes('[??] tests/new.test.js'));
+    });
+  });
+
+  describe('parseMultiResponse', () => {
+    it('parses a valid multi-commit response', () => {
+      const raw = JSON.stringify({
+        commits: [
+          { files: ['src/index.js'], subject: 'feat: add multi mode', body: '' },
+          { files: ['tests/index.test.js'], subject: 'test: cover multi mode', body: 'Adds regression coverage' }
+        ]
+      });
+
+      const result = parseMultiResponse(raw, ['src/index.js', 'tests/index.test.js']);
+      assert.strictEqual(result.length, 2);
+      assert.deepStrictEqual(result[0].files, ['src/index.js']);
+      assert.strictEqual(result[1].body, 'Adds regression coverage');
+    });
+
+    it('throws when a file is duplicated across commits', () => {
+      const raw = JSON.stringify({
+        commits: [
+          { files: ['src/index.js'], subject: 'feat: add multi mode', body: '' },
+          { files: ['src/index.js'], subject: 'test: cover multi mode', body: '' }
+        ]
+      });
+
+      assert.throws(() => parseMultiResponse(raw, ['src/index.js']), { code: 'PARSE_ERROR' });
+    });
+
+    it('throws when a changed file is missing from the plan', () => {
+      const raw = JSON.stringify({
+        commits: [
+          { files: ['src/index.js'], subject: 'feat: add multi mode', body: '' }
+        ]
+      });
+
+      assert.throws(() => parseMultiResponse(raw, ['src/index.js', 'tests/index.test.js']), { code: 'PARSE_ERROR' });
     });
   });
 });

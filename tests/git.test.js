@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { getDiff, stageTracked, commit } from '../src/git.js';
+import { getDiff, getAllChanges, stageTracked, stageFiles, unstageAll, commit } from '../src/git.js';
 import { mkdtemp, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -100,6 +100,25 @@ describe('git.js', () => {
     });
   });
 
+  describe('getAllChanges', () => {
+    it('includes mixed tracked changes and untracked files', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'baseline.txt'), 'staged version');
+      await execGit(['add', 'baseline.txt']);
+      await writeFile(join(repoDir, 'baseline.txt'), 'staged and unstaged version');
+      await writeFile(join(repoDir, 'new-file.txt'), 'brand new');
+
+      const result = await getAllChanges({ maxDiffLength: 12000 });
+
+      assert.ok(result.diff.includes('baseline.txt'));
+      assert.ok(result.diff.includes('new-file.txt'));
+      assert.ok(result.files.some(file => file.displayPath === 'baseline.txt'));
+      assert.ok(result.files.some(file => file.displayPath === 'new-file.txt' && file.status === '??'));
+    });
+  });
+
   describe('stageTracked', () => {
     it('stages tracked modifications', async () => {
       await writeFile(join(repoDir, 'baseline.txt'), 'stage-test');
@@ -107,6 +126,37 @@ describe('git.js', () => {
 
       const { stdout } = await execGit(['diff', '--cached', '--name-only']);
       assert.ok(stdout.includes('baseline.txt'));
+    });
+  });
+
+  describe('stageFiles', () => {
+    it('stages only the requested files', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'select-a.txt'), 'a');
+      await writeFile(join(repoDir, 'select-b.txt'), 'b');
+
+      await stageFiles(['select-a.txt']);
+
+      const { stdout } = await execGit(['diff', '--cached', '--name-only']);
+      assert.ok(stdout.includes('select-a.txt'));
+      assert.ok(!stdout.includes('select-b.txt'));
+    });
+  });
+
+  describe('unstageAll', () => {
+    it('unstages staged changes', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'baseline.txt'), 'unstage me');
+      await execGit(['add', 'baseline.txt']);
+
+      await unstageAll();
+
+      const { stdout } = await execGit(['diff', '--cached', '--name-only']);
+      assert.strictEqual(stdout.trim(), '');
     });
   });
 

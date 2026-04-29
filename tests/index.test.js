@@ -15,6 +15,11 @@ describe('index.js', () => {
       assert.strictEqual(flags.set, true);
     });
 
+    it('parses --multi', () => {
+      const flags = parseArgs(['--multi']);
+      assert.strictEqual(flags.multi, true);
+    });
+
     it('parses --provider with value', () => {
       const flags = parseArgs(['--provider', 'anthropic']);
       assert.strictEqual(flags.provider, 'anthropic');
