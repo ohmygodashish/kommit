@@ -3,16 +3,25 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
+function normalizeGitPath(path) {
+  if (!path) return path;
+  return path.startsWith('"') && path.endsWith('"') ? JSON.parse(path) : path;
+}
+
 function execGit(args, options = {}) {
   return execFileAsync('git', args, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, ...options });
 }
 
-export async function getDiff(providerConfig) {
+async function ensureRepo() {
   try {
     await execGit(['rev-parse', '--git-dir']);
   } catch {
     throw Object.assign(new Error('Not a git repository.'), { code: 'not_a_repo' });
   }
+}
+
+export async function getDiff(providerConfig) {
+  await ensureRepo();
 
   let diff = '';
   let source = 'staged';
@@ -46,6 +55,100 @@ export async function getDiff(providerConfig) {
     truncated,
     source
   };
+}
+
+export async function getAllChanges(providerConfig) {
+  await ensureRepo();
+
+  const files = await getChangedFiles();
+  if (files.length === 0) {
+    throw Object.assign(new Error('No changes detected to commit.'), { code: 'no_changes' });
+  }
+
+  let trackedDiff = '';
+  try {
+    const result = await execGit(['diff', 'HEAD']);
+    trackedDiff = result.stdout;
+  } catch {
+    trackedDiff = '';
+  }
+
+  const untrackedDiffs = [];
+  for (const file of files) {
+    if (file.status !== '??') continue;
+    try {
+      const result = await execGit(['diff', '--no-index', '--', '/dev/null', file.path]);
+      untrackedDiffs.push(result.stdout);
+    } catch (err) {
+      if (typeof err.stdout === 'string' && err.stdout) {
+        untrackedDiffs.push(err.stdout);
+        continue;
+      }
+      throw Object.assign(
+        new Error(`Failed to diff untracked file '${file.path}': ${err.stderr || err.message}`),
+        { code: 'diff_failed' }
+      );
+    }
+  }
+
+  const combinedDiff = [trackedDiff.trimEnd(), ...untrackedDiffs.map(diff => diff.trimEnd())]
+    .filter(Boolean)
+    .join('\n');
+
+  const maxDiffLength = providerConfig.maxDiffLength || 12000;
+  const { truncatedDiff, truncated } = truncateDiff(combinedDiff, maxDiffLength);
+
+  return {
+    diff: truncatedDiff,
+    truncated,
+    files
+  };
+}
+
+async function getChangedFiles() {
+  const { stdout } = await execGit(['status', '--porcelain']);
+  const files = [];
+
+  for (const line of stdout.split('\n')) {
+    if (!line.trim()) continue;
+
+    const status = line.slice(0, 2);
+    const rawPath = line.slice(3);
+
+    if (status === '??') {
+      const path = normalizeGitPath(rawPath);
+      files.push({
+        status,
+        path,
+        displayPath: path,
+        stagePaths: [path]
+      });
+      continue;
+    }
+
+    if (rawPath.includes(' -> ')) {
+      const [oldPathRaw, newPathRaw] = rawPath.split(' -> ');
+      const oldPath = normalizeGitPath(oldPathRaw);
+      const newPath = normalizeGitPath(newPathRaw);
+      files.push({
+        status,
+        path: newPath,
+        displayPath: `${oldPath} -> ${newPath}`,
+        stagePaths: [oldPath, newPath]
+      });
+      continue;
+    }
+
+    const path = normalizeGitPath(rawPath);
+    files.push({
+      status,
+      path,
+      displayPath: path,
+      stagePaths: [path]
+    });
+  }
+
+  return files;
 }
 
 function truncateDiff(diff, maxLength) {
@@ -99,6 +202,28 @@ function truncateDiff(diff, maxLength) {
 export async function stageTracked() {
   try {
     await execGit(['add', '-u']);
+  } catch (err) {
+    throw Object.assign(
+      new Error(`git add failed:\n${err.stderr || err.message}`),
+      { code: 'stage_failed' }
+    );
+  }
+}
+
+export async function unstageAll() {
+  try {
+    await execGit(['reset']);
+  } catch (err) {
+    throw Object.assign(
+      new Error(`git reset failed:\n${err.stderr || err.message}`),
+      { code: 'unstage_failed' }
+    );
+  }
+}
+
+export async function stageFiles(files) {
+  try {
+    await execGit(['add', '--', ...files]);
   } catch (err) {
     throw Object.assign(
       new Error(`git add failed:\n${err.stderr || err.message}`),
