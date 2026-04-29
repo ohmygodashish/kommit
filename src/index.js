@@ -350,7 +350,7 @@ async function runMultiCommitFlow({ flags, config, auth, provider, providerConfi
     originalProvider,
     originalProviderConfig,
     originalApiKey,
-    spinnerMessage: 'Generating multi-commit plan...',
+    spinnerMessage: 'Generating commit messages...',
     parse: rawResponse => {
       const commits = parseMultiResponse(rawResponse, allowedFiles);
       for (const commitPlan of commits) {
@@ -431,7 +431,7 @@ async function runMultiCommitFlow({ flags, config, auth, provider, providerConfi
         originalProvider,
         originalProviderConfig,
         originalApiKey,
-        spinnerMessage: 'Regenerating multi-commit plan...',
+        spinnerMessage: 'Regenerating commit messages...',
         parse: rawResponse => {
           const commits = parseMultiResponse(rawResponse, allowedFiles);
           for (const commitPlan of commits) {
