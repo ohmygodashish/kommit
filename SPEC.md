@@ -824,6 +824,9 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 - [ ] `--verbose`
 - [ ] `--provider` override
 - [ ] `--skill` override
+- [ ] `--multi` with staged, unstaged, and untracked files
+- [ ] `--multi` select subset of proposed commits
+- [ ] `--multi` edit a specific proposed commit before execution
 - [ ] `[y]` copy to clipboard (macOS/Linux/Windows)
 - [ ] Clipboard fallback chain on Linux (xclip absent, xclip broken, etc.)
 - [ ] `[f] Retry with another provider` on transient API error

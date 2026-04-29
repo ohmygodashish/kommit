@@ -37,6 +37,7 @@ kommit [options]
 |--------|-------------|
 | `--init` | Run the interactive setup wizard (creates config if missing, merges auth keys) |
 | `--set` | Configure default provider, model, or skill name |
+| `--multi` | Split the current working tree into multiple logical commits |
 | `--provider <name>` | Override the default provider for this run |
 | `--skill <name>` | Override skill for this run |
 | `--dry-run` | Generate and show the message without committing |
@@ -85,6 +86,24 @@ feat(auth): add JWT validation middleware
 - **[e]** — Edit the subject and body inline
 - **[r]** — Regenerate with a variation hint
 - **[c]** — Cancel
+
+### Multi-Commit Mode
+
+Use `kommit --multi` to ask the LLM for a file-level commit plan across your current working tree.
+
+```bash
+kommit --multi
+```
+
+The plan includes staged changes, unstaged tracked changes, and untracked files. After the plan is generated, you can:
+
+- **[a]** — Accept all proposed commits and create them in order
+- **[s]** — Select only some proposed commits to create
+- **[e]** — Pick one proposed commit and edit its subject/body
+- **[r]** — Regenerate the full plan with a variation hint
+- **[c]** — Cancel without committing
+
+`--multi` temporarily unstages everything before staging the selected file groups commit-by-commit. Files you do not select remain in your working tree.
 
 ## Configuration
 
