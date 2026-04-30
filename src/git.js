@@ -70,7 +70,21 @@ export async function getAllChanges(providerConfig) {
     const result = await execGit(['diff', 'HEAD']);
     trackedDiff = result.stdout;
   } catch {
-    trackedDiff = '';
+    // HEAD may be unborn (no commits yet). Fall back to staged + unstaged separately.
+    const parts = [];
+    try {
+      const staged = await execGit(['diff', '--cached']);
+      if (staged.stdout) parts.push(staged.stdout);
+    } catch {
+      // no staged diff
+    }
+    try {
+      const unstaged = await execGit(['diff']);
+      if (unstaged.stdout) parts.push(unstaged.stdout);
+    } catch {
+      // no unstaged diff
+    }
+    trackedDiff = parts.join('\n');
   }
 
   const untrackedDiffs = [];
@@ -126,7 +140,7 @@ async function getChangedFiles() {
       continue;
     }
 
-    if (rawPath.includes(' -> ')) {
+    if (status.includes('R') && rawPath.includes(' -> ')) {
       const [oldPathRaw, newPathRaw] = rawPath.split(' -> ');
       const oldPath = normalizeGitPath(oldPathRaw);
       const newPath = normalizeGitPath(newPathRaw);
