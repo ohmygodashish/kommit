@@ -11,17 +11,27 @@ import { promptAction, editMessage, promptError, promptSelectProvider, promptMul
 import { parseArgs, getApiKey, printHelp, getVersion } from './args.js';
 import { copyToClipboard } from './clipboard.js';
 
-function printVerbose(label, content) {
+let _exitFn = (code) => process.exit(code);
+
+export function setExitForTesting(fn) {
+  _exitFn = fn || ((code) => process.exit(code));
+}
+
+function _exit(code) {
+  _exitFn(code);
+}
+
+export function printVerbose(label, content) {
   console.error(`\n=== ${label} ===\n${content}\n=== END ${label} ===\n`);
 }
 
-function buildFullMessage(message) {
+export function buildFullMessage(message) {
   return message.body
     ? `${message.subject}\n\n${message.body}`
     : message.subject;
 }
 
-function getVariationHint(count) {
+export function getVariationHint(count) {
   const hints = [
     'Try to be more concise.',
     'Focus on the \'why\' rather than the \'what\'.',
@@ -30,7 +40,7 @@ function getVariationHint(count) {
   return hints[Math.min(count - 1, hints.length - 1)];
 }
 
-async function commitMessage(message) {
+export async function commitMessage(message) {
   const tmpFile = join(tmpdir(), `kommit-msg-${Date.now()}-${process.pid}.txt`);
 
   try {
@@ -54,7 +64,7 @@ async function commitMessage(message) {
   }
 }
 
-async function generateWithFallback({
+export async function generateWithFallback({
   config,
   auth,
   flags,
@@ -152,13 +162,13 @@ async function generateWithFallback({
   }
 }
 
-async function runSingleCommitFlow({ flags, config, auth, provider, providerConfig, apiKey }) {
+export async function runSingleCommitFlow({ flags, config, auth, provider, providerConfig, apiKey }) {
   let diffResult;
   try {
     diffResult = await getDiff(providerConfig);
   } catch (err) {
     console.error(`kommit: ${err.message}`);
-    process.exit(1);
+    _exit(1);
   }
 
   if (diffResult.source === 'unstaged') {
@@ -204,7 +214,7 @@ async function runSingleCommitFlow({ flags, config, auth, provider, providerConf
   });
 
   if (!currentMessage) {
-    process.exit(1);
+    _exit(1);
   }
 
   let regenerateCount = 0;
@@ -213,13 +223,13 @@ async function runSingleCommitFlow({ flags, config, auth, provider, providerConf
     const action = await promptAction(currentMessage, diffResult.truncated, diffResult.source);
 
     if (action === 'cancel') {
-      process.exit(0);
+      _exit(0);
     }
 
     if (action === 'use' || action === 'stageAndUse') {
       if (flags.dryRun) {
         console.log('\n(Dry run — not committing)\n');
-        process.exit(0);
+        _exit(0);
       }
 
       if (action === 'stageAndUse') {
@@ -227,7 +237,7 @@ async function runSingleCommitFlow({ flags, config, auth, provider, providerConf
           await stageTracked();
         } catch (err) {
           console.error(`kommit: ${err.message}`);
-          process.exit(1);
+          _exit(1);
         }
       }
 
@@ -236,20 +246,20 @@ async function runSingleCommitFlow({ flags, config, auth, provider, providerConf
         console.log(`Committed: ${result.hash}`);
       } catch (err) {
         console.error(`kommit: ${err.message}`);
-        process.exit(err.exitCode || 1);
+        _exit(err.exitCode || 1);
       }
 
-      process.exit(0);
+      _exit(0);
     }
 
     if (action === 'copy') {
       try {
         await copyToClipboard(buildFullMessage(currentMessage));
         console.log('\n📋 Copied to clipboard!\n');
-        process.exit(0);
+        _exit(0);
       } catch (err) {
         console.error(`\nkommit: ${err.message}\n`);
-        process.exit(1);
+        _exit(1);
       }
     }
 
@@ -289,7 +299,7 @@ async function runSingleCommitFlow({ flags, config, auth, provider, providerConf
   }
 }
 
-async function executeMultiCommits(commits, changeMap) {
+export async function executeMultiCommits(commits, changeMap) {
   await unstageAll();
 
   for (let i = 0; i < commits.length; i++) {
@@ -312,13 +322,13 @@ async function executeMultiCommits(commits, changeMap) {
   }
 }
 
-async function runMultiCommitFlow({ flags, config, auth, provider, providerConfig, apiKey }) {
+export async function runMultiCommitFlow({ flags, config, auth, provider, providerConfig, apiKey }) {
   let changeResult;
   try {
     changeResult = await getAllChanges(providerConfig);
   } catch (err) {
     console.error(`kommit: ${err.message}`);
-    process.exit(1);
+    _exit(1);
   }
 
   if (flags.verbose) {
@@ -363,7 +373,7 @@ async function runMultiCommitFlow({ flags, config, auth, provider, providerConfi
   });
 
   if (!plan) {
-    process.exit(1);
+    _exit(1);
   }
 
   let regenerateCount = 0;
@@ -372,7 +382,7 @@ async function runMultiCommitFlow({ flags, config, auth, provider, providerConfi
     const action = await promptMultiCommitPlan(plan, changeResult.truncated);
 
     if (action === 'cancel') {
-      process.exit(0);
+      _exit(0);
     }
 
     if (action === 'acceptAll' || action === 'select') {
@@ -395,17 +405,17 @@ async function runMultiCommitFlow({ flags, config, auth, provider, providerConfi
           console.log('─────────────────────────');
           console.log('');
         }
-        process.exit(0);
+        _exit(0);
       }
 
       try {
         await executeMultiCommits(selectedCommits, changeMap);
       } catch (err) {
         console.error(`kommit: ${err.message}`);
-        process.exit(err.exitCode || 1);
+        _exit(err.exitCode || 1);
       }
 
-      process.exit(0);
+      _exit(0);
     }
 
     if (action === 'edit') {
@@ -451,23 +461,23 @@ async function runMultiCommitFlow({ flags, config, auth, provider, providerConfi
   }
 }
 
-async function main() {
+export async function main() {
   const flags = parseArgs(process.argv.slice(2));
 
   if (flags.help) {
     printHelp();
-    process.exit(0);
+    _exit(0);
   }
 
   if (flags.version) {
     const version = await getVersion();
     console.log(version);
-    process.exit(0);
+    _exit(0);
   }
 
   if (flags.init) {
     await runInitWizard();
-    process.exit(0);
+    _exit(0);
   }
 
   if (flags.set) {
@@ -476,10 +486,10 @@ async function main() {
       ({ config, auth } = await loadConfig());
     } catch (err) {
       console.error(`kommit: ${err.message}`);
-      process.exit(1);
+      _exit(1);
     }
     await runSetWizard(config, auth);
-    process.exit(0);
+    _exit(0);
   }
 
   let config, auth;
@@ -492,19 +502,19 @@ async function main() {
       ({ config, auth } = await loadConfig());
     } else {
       console.error(`kommit: ${err.message}`);
-      process.exit(1);
+      _exit(1);
     }
   }
 
   const provider = resolveProvider(config, flags, process.env, auth);
   if (!provider) {
     console.error('kommit: No provider configured. Run \'kommit --init\' to set up.');
-    process.exit(1);
+    _exit(1);
   }
 
   if (!config.providers[provider]) {
     console.error(`kommit: Unknown provider '${provider}'.`);
-    process.exit(1);
+    _exit(1);
   }
 
   const providerConfig = config.providers[provider];
@@ -513,7 +523,7 @@ async function main() {
   const needsKey = provider !== 'ollama' && provider !== 'lmstudio';
   if (needsKey && !apiKey) {
     console.error(`kommit: No API key found for provider '${provider}'. Run 'kommit --init' to configure.`);
-    process.exit(1);
+    _exit(1);
   }
 
   const skillName = resolveSkill(config, flags, process.env);
@@ -527,7 +537,4 @@ async function main() {
   await runSingleCommitFlow({ flags, config, auth, provider, providerConfig, apiKey });
 }
 
-main().catch(err => {
-  console.error(`kommit: ${err.message}`);
-  process.exit(1);
-});
+
