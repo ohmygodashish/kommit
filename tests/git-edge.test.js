@@ -76,5 +76,44 @@ describe('git.js — edge cases', () => {
       assert.ok(file, 'should parse quoted path');
       assert.strictEqual(file.displayPath, fileName);
     });
+
+    it('falls back to staged+unstaged diff on unborn HEAD', async () => {
+      const unbornDir = await mkdtemp(join(tmpdir(), 'kommit-unborn-'));
+      await execFileAsync('git', ['init'], { cwd: unbornDir, encoding: 'utf8' });
+      await execFileAsync('git', ['config', 'user.email', 'test@test.com'], { cwd: unbornDir, encoding: 'utf8' });
+      await execFileAsync('git', ['config', 'user.name', 'Test'], { cwd: unbornDir, encoding: 'utf8' });
+
+      const prevCwd = process.cwd();
+      process.chdir(unbornDir);
+
+      await writeFile(join(unbornDir, 'first.js'), 'console.log("hello");');
+      await execFileAsync('git', ['add', 'first.js'], { cwd: unbornDir, encoding: 'utf8' });
+      await writeFile(join(unbornDir, 'second.js'), 'console.log("world");');
+
+      try {
+        const result = await getAllChanges({ maxDiffLength: 12000 });
+        assert.ok(result.diff.includes('first.js'), 'diff should include staged file');
+        assert.ok(result.diff.includes('second.js'), 'diff should include unstaged file');
+        assert.strictEqual(result.files.length, 2);
+      } finally {
+        process.chdir(prevCwd);
+        await rm(unbornDir, { recursive: true, force: true });
+      }
+    });
+
+    it('does not treat " -> " in a filename as a rename', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      const fileName = 'a -> b.txt';
+      await writeFile(join(repoDir, fileName), 'content');
+      await execGit(['add', fileName]);
+
+      const result = await getAllChanges({ maxDiffLength: 12000 });
+      const file = result.files.find(f => f.path === fileName);
+      assert.ok(file, 'should find the file');
+      assert.strictEqual(file.displayPath, fileName);
+      assert.deepStrictEqual(file.stagePaths, [fileName]);
+    });
   });
 });
