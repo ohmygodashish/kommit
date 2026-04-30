@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { promptError, promptSelectProvider, setSelectForTesting } from '../src/ui.js';
+import { promptError, promptSelectProvider, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, editMessage, setSelectForTesting } from '../src/ui.js';
 
 describe('ui.js', () => {
   describe('promptError', () => {
@@ -116,6 +116,60 @@ describe('ui.js', () => {
 
       const values = capturedOptions.options.map(o => o.value);
       assert.deepStrictEqual(values, ['openai', 'anthropic', 'google']);
+    });
+  });
+
+  describe('promptMultiCommitPlan', () => {
+    it('returns acceptAll when selected', async () => {
+      setSelectForTesting(() => 'acceptAll');
+      const result = await promptMultiCommitPlan([{ subject: 'feat: add x', body: '', files: ['src/x.js'] }], false);
+      setSelectForTesting(null);
+      assert.strictEqual(result, 'acceptAll');
+    });
+  });
+
+  describe('promptSelectCommits', () => {
+    it('returns selected commit indexes', async () => {
+      setSelectForTesting(null, null, () => [0, 2]);
+      const result = await promptSelectCommits([
+        { subject: 'feat: one', files: ['a.js'] },
+        { subject: 'fix: two', files: ['b.js'] },
+        { subject: 'test: three', files: ['c.js'] }
+      ]);
+      setSelectForTesting(null);
+      assert.deepStrictEqual(result, [0, 2]);
+    });
+
+    it('returns null on cancel', async () => {
+      setSelectForTesting(null, () => true, () => Symbol('cancel'));
+      const result = await promptSelectCommits([{ subject: 'feat: one', files: ['a.js'] }]);
+      setSelectForTesting(null);
+      assert.strictEqual(result, null);
+    });
+  });
+
+  describe('promptSelectCommitToEdit', () => {
+    it('returns the selected commit index', async () => {
+      setSelectForTesting(() => 1);
+      const result = await promptSelectCommitToEdit([
+        { subject: 'feat: one', files: ['a.js'] },
+        { subject: 'fix: two', files: ['b.js'] }
+      ]);
+      setSelectForTesting(null);
+      assert.strictEqual(result, 1);
+    });
+  });
+
+  describe('editMessage', () => {
+    it('edits subject and body through test overrides', async () => {
+      const inputs = ['feat: edited', 'body line 1\\nbody line 2'];
+      setSelectForTesting(null, null, null, () => inputs.shift());
+      const result = await editMessage({ subject: 'feat: original', body: '' });
+      setSelectForTesting(null);
+      assert.deepStrictEqual(result, {
+        subject: 'feat: edited',
+        body: 'body line 1\nbody line 2'
+      });
     });
   });
 });

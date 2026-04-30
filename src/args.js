@@ -2,6 +2,7 @@ export function parseArgs(argv) {
   const flags = {
     init: false,
     set: false,
+    multi: false,
     provider: undefined,
     skill: undefined,
     dryRun: false,
@@ -18,6 +19,9 @@ export function parseArgs(argv) {
         break;
       case '--set':
         flags.set = true;
+        break;
+      case '--multi':
+        flags.multi = true;
         break;
       case '--provider':
         flags.provider = argv[++i];
@@ -54,6 +58,7 @@ Usage:
 Options:
   --init            Run the interactive setup wizard
   --set             Configure default provider, model, or skill
+  --multi           Split changes into multiple logical commits
   --provider <name> Override the default LLM provider for this run
   --skill <name>    Override the skill for this run
   --dry-run         Generate and show the message without committing

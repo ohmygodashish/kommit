@@ -33,12 +33,13 @@ kommit/
 │   ├── ui.js               # Interactive prompts & inline editing
 │   └── clipboard.js        # Cross-platform clipboard support (pbcopy, xclip, wl-copy, etc.)
 ├── tests/
+│   ├── clipboard.test.js
 │   ├── config.test.js
 │   ├── git.test.js
 │   ├── index.test.js
 │   ├── llm.test.js
 │   ├── prompt.test.js
-│   └── clipboard.test.js
+│   └── ui.test.js
 ├── package.json
 ├── README.md
 └── SPEC.md                 # This file
@@ -154,7 +155,6 @@ All API calls use native `fetch` (Node 24+). No HTTP client dependencies.
 - `version` starts at `1`.
 - On every read, if `version` is missing or `< CURRENT_VERSION`, run a migration that fills defaults for new fields and bumps the version.
 - Save the migrated config immediately so the user does not see migration prompts on every run.
-- Example migration v1 → v2: if `customSystemPrompt` exists (legacy field), set `skillName: "kommit"`, write its value to `~/.agents/skills/kommit/SKILL.md`, and remove the field. If `useSkill` exists (legacy boolean), map `true` → `skillName: "kommit"`, `false` → `skillName: null`.
 
 ### Environment Variable Overrides
 Env vars take precedence over file-based config. Naming convention:
@@ -358,7 +358,7 @@ export async function runSetWizard(config, auth)
  * @param {object} env — process.env
  * @returns {string} provider name
  */
-export function resolveProvider(config, flags, env)
+export function resolveProvider(config, flags, env, auth)
 
 /**
  * Resolves active skill from flags, env, and config.
@@ -373,9 +373,10 @@ export function resolveSkill(config, flags, env)
  * Returns all configured providers that have API keys or are local (no key needed).
  * @param {object} config
  * @param {object} auth
+ * @param {object} env — process.env
  * @returns {string[]}
  */
-export function getAvailableProviders(config, auth)
+export function getAvailableProviders(config, auth, env)
 ```
 
 ### `src/git.js`
@@ -390,11 +391,32 @@ export function getAvailableProviders(config, auth)
 export async function getDiff(providerConfig)
 
 /**
+ * Gets the combined working-tree diff against HEAD, including untracked files,
+ * and returns file metadata for multi-commit planning.
+ * @param {object} providerConfig — contains maxDiffLength
+ * @returns {Promise<{diff: string, truncated: boolean, files: Array<{status: string, path: string, displayPath: string, stagePaths: string[]}>}>}
+ */
+export async function getAllChanges(providerConfig)
+
+/**
  * Stages all tracked file modifications using git add -u.
  * @returns {Promise<void>}
  * @throws {GitError} code: 'stage_failed', includes stderr
  */
 export async function stageTracked()
+
+/**
+ * Unstages all currently staged changes.
+ * @returns {Promise<void>}
+ */
+export async function unstageAll()
+
+/**
+ * Stages the provided files for the next commit.
+ * @param {string[]} files
+ * @returns {Promise<void>}
+ */
+export async function stageFiles(files)
 
 /**
  * Commits using a temp file with git commit -F.
@@ -414,7 +436,7 @@ export async function commit(messagePath)
  * @param {string} apiKey — may be empty for local providers
  * @param {string} systemPrompt
  * @param {string} userPrompt
- * @returns {Promise<{subject: string, body: string}>}
+ * @returns {Promise<string>} raw LLM response content
  * @throws {LLMError} code: 'api_error' | 'timeout' | 'invalid_response'
  */
 export async function generateMessage(providerName, providerConfig, apiKey, systemPrompt, userPrompt)
@@ -433,9 +455,18 @@ export function isRetryable(error)
  * Builds the complete prompt. Loads skill from ~/.agents/skills/{skillName}/SKILL.md if skillName is set.
  * @param {string} diff — git diff output
  * @param {object} config
- * @returns {Promise<{system: string, user: string}>}
+ * @returns {Promise<{system: string, user: string, warning: string|null}>}
  */
 export async function buildPrompt(diff, config)
+
+/**
+ * Builds the prompt for file-level multi-commit planning.
+ * @param {string} diff
+ * @param {Array<{status: string, displayPath: string}>} files
+ * @param {object} config
+ * @returns {Promise<{system: string, user: string, warning: string|null}>}
+ */
+export async function buildMultiCommitPrompt(diff, files, config)
 
 /**
  * Parses raw LLM response into structured message.
@@ -444,6 +475,14 @@ export async function buildPrompt(diff, config)
  * @throws {ParseError} if JSON is invalid or shape is wrong
  */
 export function parseResponse(raw)
+
+/**
+ * Parses raw LLM response into a multi-commit plan.
+ * @param {string} raw
+ * @param {string[]|null} allowedFiles
+ * @returns {Array<{files: string[], subject: string, body: string}>}
+ */
+export function parseMultiResponse(raw, allowedFiles)
 
 /**
  * Validates subject against Conventional Commit format.
@@ -460,7 +499,7 @@ export function validateSubject(subject)
  * @param {{subject: string, body: string}} message
  * @param {boolean} truncated — whether diff was truncated
  * @param {'staged'|'unstaged'} source — where the diff came from
- * @returns {Promise<'use'|'stageAndUse'|'edit'|'regenerate'|'cancel'>}
+ * @returns {Promise<'use'|'stageAndUse'|'copy'|'edit'|'regenerate'|'cancel'>}
  */
 export async function promptAction(message, truncated, source)
 
@@ -475,7 +514,8 @@ export async function editMessage(message)
  * Shows an error and prompts for retry or cancel.
  * @param {Error} error
  * @param {boolean} canRetry
- * @returns {Promise<'retry'|'cancel'>}
+ * @param {string[]} availableProviders
+ * @returns {Promise<'retry'|'switch'|'cancel'>}
  */
 export async function promptError(error, canRetry, availableProviders)
 
@@ -485,6 +525,28 @@ export async function promptError(error, canRetry, availableProviders)
  * @returns {Promise<string|null>} selected provider or null if cancelled
  */
 export async function promptSelectProvider(providers)
+
+/**
+ * Displays a proposed multi-commit plan and returns the next action.
+ * @param {Array<{files: string[], subject: string, body: string}>} commits
+ * @param {boolean} truncated
+ * @returns {Promise<'acceptAll'|'select'|'edit'|'regenerate'|'cancel'>}
+ */
+export async function promptMultiCommitPlan(commits, truncated)
+
+/**
+ * Lets the user choose which proposed commits to execute.
+ * @param {Array<{subject: string, files: string[]}>} commits
+ * @returns {Promise<number[]|null>}
+ */
+export async function promptSelectCommits(commits)
+
+/**
+ * Lets the user choose one proposed commit to edit.
+ * @param {Array<{subject: string, files: string[]}>} commits
+ * @returns {Promise<number|null>}
+ */
+export async function promptSelectCommitToEdit(commits)
 
 /**
  * Wraps a promise in a loading spinner.
@@ -500,7 +562,7 @@ export async function withSpinner(promise, message)
 /**
  * Parses process.argv into flags object.
  * @param {string[]} argv
- * @returns {{init: boolean, set: boolean, provider?: string, skill?: string, dryRun: boolean, verbose: boolean, help: boolean, version: boolean}}
+ * @returns {{init: boolean, set: boolean, multi: boolean, provider?: string, skill?: string, dryRun: boolean, verbose: boolean, help: boolean, version: boolean}}
  */
 export function parseArgs(argv)
 
@@ -799,10 +861,12 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 |--------|------------|
 | `git.js` | Mock `child_process` output for staged/unstaged/no-changes scenarios; verify hunk truncation boundaries |
 | `prompt.js` | Test JSON parsing with/without fences; test Conventional Commit regex against valid and invalid subjects; test skill file loading |
-| `config.js` | Test migration logic (v0 → v1, v1 → v2); test provider resolution priority |
+| `config.js` | Test migration logic (v0 → v1); test provider/skill resolution priority; test config/auth file I/O |
 | `llm.js` | Mock `fetch` for each provider group; test retry logic; test timeout behavior |
 | `clipboard.js` | Mock `spawn` to verify platform-specific commands (pbcopy, clip.exe, xclip/xsel/wl-copy); test Linux fallback chain on ENOENT, non-zero exit, and mixed errors; verify error diagnostics include all tool failures |
 | `args.js` | Test flag parsing for all supported options; test API key resolution priority (env > file) |
+| `index.js` | Test helper functions (buildFullMessage, getVariationHint, commitMessage); test executeMultiCommits staging logic |
+| `ui.js` | Test all prompt functions including promptAction, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, withSpinner |
 
 ### Integration Tests
 - Mock LLM server (local HTTP server returning canned responses)
@@ -824,6 +888,9 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 - [ ] `--verbose`
 - [ ] `--provider` override
 - [ ] `--skill` override
+- [ ] `--multi` with staged, unstaged, and untracked files
+- [ ] `--multi` select subset of proposed commits
+- [ ] `--multi` edit a specific proposed commit before execution
 - [ ] `[y]` copy to clipboard (macOS/Linux/Windows)
 - [ ] Clipboard fallback chain on Linux (xclip absent, xclip broken, etc.)
 - [ ] `[f] Retry with another provider` on transient API error
