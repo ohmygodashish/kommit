@@ -82,7 +82,7 @@ Separating keys from config allows users to version-control or sync `config.json
       "timeout": 30000
     },
     "google": {
-      "model": "gemini-3.1-flash",
+      "model": "gemini-3.1-flash-lite",
       "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
       "maxDiffLength": 12000,
       "timeout": 30000
@@ -155,7 +155,7 @@ All API calls use native `fetch` (Node 24+). No HTTP client dependencies.
 - `version` starts at `2`.
 - On every read, if `version` is missing or `< CURRENT_VERSION`, run a migration that fills defaults for new fields and bumps the version.
 - Save the migrated config immediately so the user does not see migration prompts on every run.
-- A per-version `MIGRATION_NOTES` map (`src/config.js`) holds a user-facing description for each transition. When migration runs, the relevant notes are joined into a single warning printed to stderr (e.g. on v1→v2: `kommit: Config migrated v1→v2. Google default model is now 'gemini-3.1-flash' (replaces the -lite-preview). Run 'kommit --set' to switch.`). The warning fires once per old config; subsequent runs at the current version produce no warning.
+- A per-version `MIGRATION_NOTES` map (`src/config.js`) holds a user-facing description for each transition. When migration runs, the relevant notes are joined into a single warning printed to stderr (e.g. on v1→v2: `kommit: Config migrated v1→v2. Google default model is now 'gemini-3.1-flash-lite' (drops the -preview suffix). Run 'kommit --set' to switch.`). The warning fires once per old config; subsequent runs at the current version produce no warning.
 - The user's existing provider settings (including any custom `providers.google.model`) are preserved across migration. Migration does not silently overwrite user choices — users opt in to new defaults via `kommit --set` or `kommit --init`.
 
 ### Environment Variable Overrides
@@ -241,7 +241,7 @@ Complete example of `~/.config/kommit/config.json`:
       "timeout": 30000
     },
     "google": {
-      "model": "gemini-3.1-flash",
+      "model": "gemini-3.1-flash-lite",
       "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
       "maxDiffLength": 12000,
       "timeout": 30000

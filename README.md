@@ -232,7 +232,7 @@ This is useful when you want to switch providers or models without re-entering A
       "timeout": 30000
     },
     "google": {
-      "model": "gemini-3.1-flash",
+      "model": "gemini-3.1-flash-lite",
       "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
       "maxDiffLength": 12000,
       "timeout": 30000
