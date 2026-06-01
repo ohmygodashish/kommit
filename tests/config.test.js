@@ -70,18 +70,33 @@ describe('config.js', () => {
   describe('migrateConfig', () => {
     it('fills defaults for v0 config', () => {
       const old = { providers: { openai: { model: 'custom' } } };
-      const { config, migrated } = migrateConfig(old);
+      const { config, migrated, warning } = migrateConfig(old);
       assert.strictEqual(migrated, true);
-      assert.strictEqual(config.version, 1);
+      assert.strictEqual(config.version, 2);
       assert.strictEqual(config.providers.openai.model, 'custom');
       assert.ok(config.providers.anthropic);
+      assert.ok(warning);
+      assert.match(warning, /v0→v2/);
+      assert.match(warning, /gemini-3\.1-flash/);
     });
 
-    it('does not migrate v1 config', () => {
-      const current = { version: 1, defaultProvider: 'openai' };
-      const { config, migrated } = migrateConfig(current);
+    it('migrates v1 config to v2 and emits warning', () => {
+      const old = { version: 1, defaultProvider: 'google' };
+      const { config, migrated, warning } = migrateConfig(old);
+      assert.strictEqual(migrated, true);
+      assert.strictEqual(config.version, 2);
+      assert.strictEqual(config.defaultProvider, 'google');
+      assert.ok(warning);
+      assert.match(warning, /v1→v2/);
+      assert.match(warning, /gemini-3\.1-flash/);
+    });
+
+    it('does not migrate v2 config', () => {
+      const current = { version: 2, defaultProvider: 'openai' };
+      const { config, migrated, warning } = migrateConfig(current);
       assert.strictEqual(migrated, false);
       assert.strictEqual(config.defaultProvider, 'openai');
+      assert.strictEqual(warning, null);
     });
   });
 

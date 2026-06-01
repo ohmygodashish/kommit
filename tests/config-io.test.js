@@ -58,7 +58,7 @@ describe('config.js I/O', () => {
       const kommitDir = join(configDir, 'kommit');
       await mkdir(kommitDir, { recursive: true });
       await writeFile(join(kommitDir, 'config.json'), JSON.stringify({
-        version: 1,
+        version: 2,
         defaultProvider: 'openai'
       }), { mode: 0o600 });
 
@@ -75,7 +75,7 @@ describe('config.js I/O', () => {
       await mkdir(authDir, { recursive: true });
 
       await writeFile(join(cfgDir, 'config.json'), JSON.stringify({
-        version: 1,
+        version: 2,
         defaultProvider: 'openai'
       }), { mode: 0o600 });
 
@@ -95,7 +95,7 @@ describe('config.js I/O', () => {
       await mkdir(cfgDir, { recursive: true });
       await mkdir(authDir, { recursive: true });
 
-      await writeFile(join(cfgDir, 'config.json'), JSON.stringify({ version: 1 }), { mode: 0o600 });
+      await writeFile(join(cfgDir, 'config.json'), JSON.stringify({ version: 2 }), { mode: 0o600 });
       await writeFile(join(authDir, 'auth.json'), 'not json', { mode: 0o600 });
 
       await assert.rejects(
@@ -114,9 +114,30 @@ describe('config.js I/O', () => {
       }), { mode: 0o600 });
 
       const { config } = await loadConfig();
-      assert.strictEqual(config.version, 1);
+      assert.strictEqual(config.version, 2);
       assert.ok(config.providers);
       assert.strictEqual(config.defaultProvider, 'anthropic');
+    });
+
+    it('migrates v1 config on disk to v2 and persists', async () => {
+      const { configDir } = await setupDirs();
+      const cfgDir = join(configDir, 'kommit');
+      await mkdir(cfgDir, { recursive: true });
+
+      await writeFile(join(cfgDir, 'config.json'), JSON.stringify({
+        version: 1,
+        defaultProvider: 'google',
+        providers: {
+          google: { model: 'gemini-3.1-flash-lite-preview', endpoint: 'https://generativelanguage.googleapis.com/v1beta/models', maxDiffLength: 12000, timeout: 30000 }
+        }
+      }), { mode: 0o600 });
+
+      const { config } = await loadConfig();
+      assert.strictEqual(config.version, 2);
+      assert.strictEqual(config.providers.google.model, 'gemini-3.1-flash-lite-preview');
+
+      const persisted = JSON.parse(await readFile(join(cfgDir, 'config.json'), 'utf8'));
+      assert.strictEqual(persisted.version, 2);
     });
   });
 
@@ -124,7 +145,7 @@ describe('config.js I/O', () => {
     it('writes config with correct permissions', async () => {
       const { configDir } = await setupDirs();
       const config = {
-        version: 1,
+        version: 2,
         defaultProvider: 'openai',
         skillName: null,
         providers: {}
@@ -140,7 +161,7 @@ describe('config.js I/O', () => {
 
     it('creates parent directories if missing', async () => {
       const { configDir } = await setupDirs();
-      const config = { version: 1, defaultProvider: 'google' };
+      const config = { version: 2, defaultProvider: 'google' };
       await saveConfig(config);
 
       const configPath = join(configDir, 'kommit', 'config.json');
