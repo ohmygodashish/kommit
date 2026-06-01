@@ -6,7 +6,7 @@ import * as prompts from '@clack/prompts';
 const CURRENT_CONFIG_VERSION = 2;
 
 const MIGRATION_NOTES = {
-  2: "Google default model is now 'gemini-3.1-flash' (replaces the -lite-preview)."
+  2: "Google default model is now 'gemini-3.1-flash-lite' (replaces the -lite-preview)."
 };
 
 const PROVIDER_LABELS = {
@@ -57,7 +57,7 @@ function getDefaultConfig() {
         timeout: 30000
       },
       google: {
-        model: 'gemini-3.1-flash',
+        model: 'gemini-3.1-flash-lite',
         endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
         maxDiffLength: 12000,
         timeout: 30000
