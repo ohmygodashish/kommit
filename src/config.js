@@ -3,7 +3,11 @@ import { mkdir, readFile, writeFile, access } from 'fs/promises';
 import { join } from 'path';
 import * as prompts from '@clack/prompts';
 
-const CURRENT_CONFIG_VERSION = 1;
+const CURRENT_CONFIG_VERSION = 2;
+
+const MIGRATION_NOTES = {
+  2: "Google default model is now 'gemini-3.1-flash' (replaces the -lite-preview)."
+};
 
 const PROVIDER_LABELS = {
   openai: 'OpenAI',
@@ -53,7 +57,7 @@ function getDefaultConfig() {
         timeout: 30000
       },
       google: {
-        model: 'gemini-3.1-flash-lite-preview',
+        model: 'gemini-3.1-flash',
         endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
         maxDiffLength: 12000,
         timeout: 30000
@@ -89,10 +93,22 @@ async function fileExists(path) {
   }
 }
 
+function buildMigrationWarning(fromVersion, toVersion) {
+  const notes = [];
+  for (let v = fromVersion + 1; v <= toVersion; v++) {
+    if (MIGRATION_NOTES[v]) {
+      notes.push(MIGRATION_NOTES[v]);
+    }
+  }
+  if (notes.length === 0) return null;
+  return `Config migrated v${fromVersion}→v${toVersion}. ${notes.join(' ')} Run 'kommit --set' to switch.`;
+}
+
 export function migrateConfig(config) {
   let migrated = false;
+  const fromVersion = config.version || 0;
 
-  if (!config.version || config.version < CURRENT_CONFIG_VERSION) {
+  if (fromVersion < CURRENT_CONFIG_VERSION) {
     const defaults = getDefaultConfig();
     const oldProviders = config.providers || {};
     config = {
@@ -104,7 +120,9 @@ export function migrateConfig(config) {
     migrated = true;
   }
 
-  return { config, migrated };
+  const warning = migrated ? buildMigrationWarning(fromVersion, config.version) : null;
+
+  return { config, migrated, warning };
 }
 
 export async function loadConfig() {
@@ -130,6 +148,9 @@ export async function loadConfig() {
   config = migration.config;
   if (migration.migrated) {
     await saveConfig(config);
+    if (migration.warning) {
+      console.warn(`kommit: ${migration.warning}`);
+    }
   }
 
   if (await fileExists(authPath)) {
