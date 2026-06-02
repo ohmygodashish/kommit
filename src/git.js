@@ -20,6 +20,11 @@ async function ensureRepo() {
   }
 }
 
+export async function getRepoRoot() {
+  const { stdout } = await execGit(['rev-parse', '--show-toplevel']);
+  return stdout.trim();
+}
+
 export async function getDiff(providerConfig) {
   await ensureRepo();
 
