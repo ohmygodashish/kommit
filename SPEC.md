@@ -305,10 +305,11 @@ Complete example of `~/.local/share/kommit/auth.json`:
 Orchestration in `src/index.js`:
 1. Parse CLI flags
 2. Load config + auth (or run `--init`)
-3. Resolve provider
-4. `git.getDiff()` → `prompt.buildPrompt()` → `llm.generate()` → `ui.show()`
-5. On `[u]`, write to temp file → `git.commit(tmpfile)`
-6. On `[y]`, `clipboard.copyToClipboard(message)`
+3. Resolve repo root via `git.getRepoRoot()` and `process.chdir()` to it (ensures relative paths from `git status` resolve correctly when kommit is invoked from a subdirectory)
+4. Resolve provider
+5. `git.getDiff()` → `prompt.buildPrompt()` → `llm.generate()` → `ui.show()`
+6. On `[u]`, write to temp file → `git.commit(tmpfile)`
+7. On `[y]`, `clipboard.copyToClipboard(message)`
 
 ---
 
@@ -426,6 +427,14 @@ export async function stageFiles(files)
  * @throws {GitError} code: 'commit_failed', includes stderr
  */
 export async function commit(messagePath)
+
+/**
+ * Returns the absolute path to the repository root.
+ * Used by main() to chdir so that relative paths from git status resolve correctly
+ * regardless of the user's current working directory.
+ * @returns {Promise<string>}
+ */
+export async function getRepoRoot()
 ```
 
 ### `src/llm.js`
