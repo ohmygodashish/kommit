@@ -4,7 +4,7 @@ import { join } from 'path';
 import process from 'process';
 
 import { loadConfig, runInitWizard, runSetWizard, resolveProvider, resolveSkill, getAvailableProviders } from './config.js';
-import { getDiff, getAllChanges, commit, stageTracked, stageFiles, unstageAll } from './git.js';
+import { getDiff, getAllChanges, commit, stageTracked, stageFiles, unstageAll, getRepoRoot } from './git.js';
 import { generateMessage, isRetryable } from './llm.js';
 import { buildPrompt, buildMultiCommitPrompt, parseResponse, parseMultiResponse, validateSubject } from './prompt.js';
 import { promptAction, editMessage, promptError, promptSelectProvider, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, withSpinner } from './ui.js';
@@ -504,6 +504,14 @@ export async function main() {
       console.error(`kommit: ${err.message}`);
       _exit(1);
     }
+  }
+
+  try {
+    const root = await getRepoRoot();
+    process.chdir(root);
+  } catch {
+    console.error('kommit: Not a git repository.');
+    _exit(1);
   }
 
   const provider = resolveProvider(config, flags, process.env, auth);
