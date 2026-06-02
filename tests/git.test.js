@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { getDiff, getAllChanges, stageTracked, stageFiles, unstageAll, commit } from '../src/git.js';
-import { mkdtemp, writeFile, rm } from 'fs/promises';
+import { getDiff, getAllChanges, stageTracked, stageFiles, unstageAll, commit, getRepoRoot } from '../src/git.js';
+import { mkdtemp, writeFile, rm, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFile } from 'child_process';
@@ -176,6 +176,28 @@ describe('git.js', () => {
       assert.strictEqual(stdout.trim(), 'test commit message');
 
       await rm(msgFile);
+    });
+  });
+
+  describe('getRepoRoot', () => {
+    it('returns the absolute path to the repo root', async () => {
+      const root = await getRepoRoot();
+      assert.strictEqual(root, repoDir);
+    });
+
+    it('returns the same root when called from a subdirectory', async () => {
+      const subDir = join(repoDir, 'src', 'components');
+      await mkdir(subDir, { recursive: true });
+
+      const prevCwd = process.cwd();
+      process.chdir(subDir);
+
+      try {
+        const root = await getRepoRoot();
+        assert.strictEqual(root, repoDir);
+      } finally {
+        process.chdir(prevCwd);
+      }
     });
   });
 });
