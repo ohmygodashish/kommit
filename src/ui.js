@@ -222,3 +222,58 @@ export async function withSpinner(promise, message) {
     throw err;
   }
 }
+
+export async function promptUndoConfirmation(commits, pushedCommits) {
+  console.log('');
+  console.log(`Would undo ${commits.length} commit${commits.length > 1 ? 's' : ''}:`);
+  console.log('─────────────────────────');
+  
+  for (const commit of commits) {
+    const pushedTag = pushedCommits.has(commit.hash) ? ' [pushed]' : '';
+    console.log(`${commit.shortHash} ${commit.subject}${pushedTag}`);
+    if (commit.body) {
+      console.log(`  ${commit.body.split('\n')[0]}`);
+    }
+  }
+  
+  console.log('─────────────────────────');
+  
+  if (pushedCommits.size > 0) {
+    console.log(`(${pushedCommits.size} pushed)`);
+    console.log('');
+    console.log('⚠️  Warning: Some commits have been pushed. Undoing will rewrite local history.');
+  }
+  
+  console.log('');
+  
+  const action = await _select({
+    message: 'What would you like to do?',
+    options: [
+      { value: 'yes', label: '[y] Yes, undo these commits' },
+      { value: 'cancel', label: '[n] No, cancel' }
+    ]
+  });
+  
+  if (_isCancel(action) || action === 'cancel') {
+    return 'cancel';
+  }
+  
+  return action;
+}
+
+export async function promptUndoAction(count) {
+  const action = await _select({
+    message: 'What would you like to do with the staged changes?',
+    options: [
+      { value: 'regenerate', label: '[r] Regenerate message' + (count > 1 ? ' (single commit for all changes)' : '') },
+      { value: 'edit', label: '[e] Edit a message' },
+      { value: 'cancel', label: '[c] Cancel (leave staged)' }
+    ]
+  });
+  
+  if (_isCancel(action)) {
+    return 'cancel';
+  }
+  
+  return action;
+}
