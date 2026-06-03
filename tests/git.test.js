@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { getDiff, getAllChanges, stageTracked, stageFiles, unstageAll, commit, getRepoRoot } from '../src/git.js';
+import { getDiff, getAllChanges, stageTracked, stageFiles, unstageAll, commit, getRepoRoot, getLastCommits, isMergeCommit, isCommitPushed, undoCommits } from '../src/git.js';
 import { mkdtemp, writeFile, rm, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -197,6 +197,168 @@ describe('git.js', () => {
         assert.strictEqual(root, repoDir);
       } finally {
         process.chdir(prevCwd);
+      }
+    });
+  });
+
+  describe('getLastCommits', () => {
+    it('returns the last N commits', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'file1.txt'), 'content1');
+      await execGit(['add', 'file1.txt']);
+      await execGit(['commit', '-m', 'first commit']);
+
+      await writeFile(join(repoDir, 'file2.txt'), 'content2');
+      await execGit(['add', 'file2.txt']);
+      await execGit(['commit', '-m', 'second commit']);
+
+      const commits = await getLastCommits(2);
+      assert.strictEqual(commits.length, 2);
+      assert.strictEqual(commits[0].subject, 'second commit');
+      assert.strictEqual(commits[1].subject, 'first commit');
+      assert.ok(commits[0].hash);
+      assert.ok(commits[0].shortHash);
+    });
+
+    it('returns fewer commits if count exceeds history', async () => {
+      const commits = await getLastCommits(100);
+      assert.ok(commits.length > 0);
+      assert.ok(commits.length <= 100);
+    });
+
+    it('handles commits with multi-line bodies correctly', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'multiline1.txt'), 'content1');
+      await execGit(['add', 'multiline1.txt']);
+      await execGit(['commit', '-m', 'multiline commit 1', '-m', 'This is line 1 of the body.\nThis is line 2 of the body.\nThis is line 3 of the body.']);
+
+      await writeFile(join(repoDir, 'multiline2.txt'), 'content2');
+      await execGit(['add', 'multiline2.txt']);
+      await execGit(['commit', '-m', 'multiline commit 2', '-m', 'Another multi-line body.\nWith two lines.']);
+
+      const commits = await getLastCommits(2);
+      assert.strictEqual(commits.length, 2);
+      assert.strictEqual(commits[0].subject, 'multiline commit 2');
+      assert.ok(commits[0].body.includes('Another multi-line body'));
+      assert.ok(commits[0].body.includes('With two lines'));
+      assert.strictEqual(commits[1].subject, 'multiline commit 1');
+      assert.ok(commits[1].body.includes('This is line 1'));
+      assert.ok(commits[1].body.includes('This is line 3'));
+    });
+  });
+
+  describe('isMergeCommit', () => {
+    it('returns false for regular commits', async () => {
+      const { stdout } = await execGit(['rev-parse', 'HEAD']);
+      const hash = stdout.trim();
+      const result = await isMergeCommit(hash);
+      assert.strictEqual(result, false);
+    });
+
+    it('returns true for merge commits', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      const { stdout: currentBranch } = await execGit(['rev-parse', '--abbrev-ref', 'HEAD']);
+      const baseBranch = currentBranch.trim();
+
+      await execGit(['checkout', '-b', 'feature-branch']);
+      await writeFile(join(repoDir, 'feature.txt'), 'feature');
+      await execGit(['add', 'feature.txt']);
+      await execGit(['commit', '-m', 'add feature']);
+
+      await execGit(['checkout', baseBranch]);
+      await execGit(['merge', 'feature-branch', '--no-ff']);
+
+      const { stdout } = await execGit(['rev-parse', 'HEAD']);
+      const mergeHash = stdout.trim();
+      const result = await isMergeCommit(mergeHash);
+      assert.strictEqual(result, true);
+
+      await execGit(['branch', '-D', 'feature-branch']);
+    });
+  });
+
+  describe('isCommitPushed', () => {
+    it('returns false for unpushed commits', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'unpushed.txt'), 'content');
+      await execGit(['add', 'unpushed.txt']);
+      await execGit(['commit', '-m', 'unpushed commit']);
+
+      const { stdout } = await execGit(['rev-parse', 'HEAD']);
+      const hash = stdout.trim();
+      const result = await isCommitPushed(hash);
+      assert.strictEqual(result, false);
+    });
+  });
+
+  describe('undoCommits', () => {
+    it('undoes the last commit and stages changes', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'undo-test.txt'), 'content');
+      await execGit(['add', 'undo-test.txt']);
+      await execGit(['commit', '-m', 'commit to undo']);
+
+      const { stdout: beforeHead } = await execGit(['rev-parse', 'HEAD']);
+      const beforeHash = beforeHead.trim();
+
+      const result = await undoCommits(1);
+
+      assert.strictEqual(result.previousHead, beforeHash);
+      assert.ok(result.newHead);
+      assert.notStrictEqual(result.newHead, beforeHash);
+
+      const { stdout: stagedFiles } = await execGit(['diff', '--cached', '--name-only']);
+      assert.ok(stagedFiles.includes('undo-test.txt'));
+    });
+
+    it('undoes multiple commits', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'multi1.txt'), 'content1');
+      await execGit(['add', 'multi1.txt']);
+      await execGit(['commit', '-m', 'commit 1']);
+
+      await writeFile(join(repoDir, 'multi2.txt'), 'content2');
+      await execGit(['add', 'multi2.txt']);
+      await execGit(['commit', '-m', 'commit 2']);
+
+      const result = await undoCommits(2);
+
+      assert.strictEqual(result.commitCount, 2);
+
+      const { stdout: stagedFiles } = await execGit(['diff', '--cached', '--name-only']);
+      assert.ok(stagedFiles.includes('multi1.txt'));
+      assert.ok(stagedFiles.includes('multi2.txt'));
+    });
+
+    it('throws when not enough commits', async () => {
+      const emptyDir = await mkdtemp(join(tmpdir(), 'kommit-undo-empty-'));
+      await execFileAsync('git', ['init'], { cwd: emptyDir });
+      await execFileAsync('git', ['config', 'user.email', 'test@test.com'], { cwd: emptyDir });
+      await execFileAsync('git', ['config', 'user.name', 'Test'], { cwd: emptyDir });
+
+      const prevCwd = process.cwd();
+      process.chdir(emptyDir);
+
+      try {
+        await assert.rejects(
+          async () => undoCommits(1),
+          err => err.code === 'undo_failed'
+        );
+      } finally {
+        process.chdir(prevCwd);
+        await rm(emptyDir, { recursive: true, force: true });
       }
     });
   });

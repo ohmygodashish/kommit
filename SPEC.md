@@ -12,6 +12,7 @@ A lightweight Node.js CLI utility that generates commit messages from git diffs 
 - Copy message to clipboard (`[y]`) with cross-platform support (macOS, Windows, Linux)
 - Interactive first-run setup wizard (`--init`)
 - Optional skill file (`SKILL.md`) for user-defined prompt customization
+- Commit undo support (`--undo [count]`) with merge detection and push warnings
 - Minimal, focused CLI with small dependencies allowed
 
 ---
@@ -435,6 +436,36 @@ export async function commit(messagePath)
  * @returns {Promise<string>}
  */
 export async function getRepoRoot()
+
+/**
+ * Gets the last N commits from history.
+ * @param {number} count — number of commits to retrieve
+ * @returns {Promise<Array<{hash: string, shortHash: string, subject: string, body: string, parents: string[]}>>}
+ * @throws {GitError} code: 'history_failed'
+ */
+export async function getLastCommits(count)
+
+/**
+ * Checks if a commit is a merge commit (has 2+ parents).
+ * @param {string} hash — commit hash
+ * @returns {Promise<boolean>}
+ */
+export async function isMergeCommit(hash)
+
+/**
+ * Checks if a commit has been pushed to any remote branch.
+ * @param {string} commitHash — commit hash
+ * @returns {Promise<boolean>}
+ */
+export async function isCommitPushed(commitHash)
+
+/**
+ * Undoes the last N commits using git reset --soft.
+ * @param {number} count — number of commits to undo
+ * @returns {Promise<{previousHead: string, newHead: string, commitCount: number}>}
+ * @throws {GitError} code: 'undo_failed'
+ */
+export async function undoCommits(count)
 ```
 
 ### `src/llm.js`
@@ -565,6 +596,21 @@ export async function promptSelectCommitToEdit(commits)
  * @returns {Promise<T>}
  */
 export async function withSpinner(promise, message)
+
+/**
+ * Shows commits to be undone and prompts for confirmation.
+ * @param {Array<{hash: string, shortHash: string, subject: string, body: string}>} commits
+ * @param {Set<string>} pushedCommits — set of commit hashes that have been pushed
+ * @returns {Promise<'yes'|'cancel'>}
+ */
+export async function promptUndoConfirmation(commits, pushedCommits)
+
+/**
+ * Prompts for post-undo action.
+ * @param {number} count — number of commits undone
+ * @returns {Promise<'regenerate'|'edit'|'cancel'>}
+ */
+export async function promptUndoAction(count)
 ```
 
 ### `src/args.js`
@@ -572,7 +618,7 @@ export async function withSpinner(promise, message)
 /**
  * Parses process.argv into flags object.
  * @param {string[]} argv
- * @returns {{init: boolean, set: boolean, multi: boolean, provider?: string, skill?: string, dryRun: boolean, verbose: boolean, help: boolean, version: boolean}}
+ * @returns {{init: boolean, set: boolean, multi: boolean, undo: boolean, undoCount: number, provider?: string, skill?: string, dryRun: boolean, verbose: boolean, help: boolean, version: boolean}}
  */
 export function parseArgs(argv)
 
@@ -714,10 +760,12 @@ The `--- BEGIN/END GIT DIFF ---` delimiters reduce the risk of prompt injection 
 | `kommit` | Main flow: diff → generate → interactive prompt |
 | `kommit --init` | Run interactive setup wizard. Creates config if missing; merges auth keys |
 | `kommit --set` | Configure default provider, model, or skill name without touching auth |
+| `kommit --multi` | Split changes into multiple logical commits |
+| `kommit --undo [count]` | Undo last N commits (default: 1), leave changes staged |
 | `kommit --provider <name>` | Override default provider for this run |
 | `kommit --skill <name>` | Override skill for this run |
 | `kommit --dry-run` | Generate and show message; do not invoke `git commit` |
-| `kommit --verbose` | Print raw prompt, raw response, and exact git commands to stderr |
+| `kommit --verbose` | Print raw prompts, raw response, and exact git commands to stderr |
 | `kommit --help`, `-h` | Show help message and exit |
 | `kommit --version`, `-v` | Show version number and exit |
 
@@ -725,6 +773,8 @@ The `--- BEGIN/END GIT DIFF ---` delimiters reduce the risk of prompt injection 
 Manually parse `process.argv.slice(2)`. No argument parsing dependency. Supported flags:
 - `--init`
 - `--set`
+- `--multi`
+- `--undo [count]`
 - `--provider <name>`
 - `--skill <name>`
 - `--dry-run`
@@ -769,6 +819,74 @@ Replace session cookies with stateless JWT tokens
   - 2nd retry: `"Focus on the 'why' rather than the 'what'."`
   - 3rd+ retry: `"Use a broader scope if appropriate."`
 - **`[c]`** — Exit cleanly with code `0`.
+
+### Undo Flow
+
+`kommit --undo [count]` undoes commits while preserving changes in the staging area.
+
+```
+┌─────────────────────────────────────┐
+│ 1. Validate count                   │
+│    - Default: 1                     │
+│    - Must be positive integer       │
+│    - Check: enough commits exist?   │
+└─────────────────────────────────────┘
+  ↓
+┌─────────────────────────────────────┐
+│ 2. Get commits to undo              │
+│    - Fetch last N commits           │
+│    - Check each for merge (2+ parents)│
+│    - Check if any were pushed       │
+└─────────────────────────────────────┘
+  ↓
+┌─────────────────────────────────────┐
+│ 3. Block if merge commit found      │
+│    Error: "Cannot undo merge commit │
+│    abc1234. Use git revert instead."│
+└─────────────────────────────────────┘
+  ↓
+┌─────────────────────────────────────┐
+│ 4. Show commits to undo             │
+│    "Would undo 3 commits:"          │
+│    - abc1234 feat: add auth [pushed]│
+│    - def5678 fix: login bug         │
+│    - ghi9012 docs: update readme    │
+│    (2 pushed)                       │
+└─────────────────────────────────────┘
+  ↓
+┌─────────────────────────────────────┐
+│ 5. Confirm (selector menu)          │
+│    [y] Yes, undo these commits      │
+│    [n] No, cancel                   │
+└─────────────────────────────────────┘
+  ↓
+┌─────────────────────────────────────┐
+│ 6. git reset --soft HEAD~N          │
+└─────────────────────────────────────┘
+  ↓
+┌─────────────────────────────────────┐
+│ 7. Post-undo options (selector)     │
+│    [r] Regenerate message           │
+│    [e] Edit a message (pick which)  │
+│    [c] Cancel (leave staged)        │
+└─────────────────────────────────────┘
+```
+
+#### Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| `--undo 0` | Error: "Count must be at least 1" |
+| `--undo 999` (not enough commits) | Error: "Cannot undo 999 commits. Repository only has 5 commits." |
+| Merge commit in range | Error: "Cannot undo merge commit abc1234. Use `git revert` instead." |
+| `--undo --dry-run` | Show what would happen, don't execute |
+| Pushed commits | Warn: "Some commits have been pushed. Undoing will rewrite local history." |
+
+#### Post-Undo Actions
+
+- **`[r] Regenerate`** — Get the staged diff, generate a new commit message via LLM, enter standard commit flow
+- **`[e] Edit`** — Let user pick which commit message to edit (if multiple), show edited message, leave changes staged
+- **`[c] Cancel`** — Exit with code 0, changes remain staged for manual commit
 
 ---
 
@@ -901,6 +1019,15 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 - [ ] `--multi` with staged, unstaged, and untracked files
 - [ ] `--multi` select subset of proposed commits
 - [ ] `--multi` edit a specific proposed commit before execution
+- [ ] `--undo` undoes last commit and stages changes
+- [ ] `--undo N` undoes multiple commits
+- [ ] `--undo --dry-run` shows preview without executing
+- [ ] `--undo` blocks merge commits with clear error
+- [ ] `--undo` warns about pushed commits
+- [ ] `--undo` with count > available commits shows error
+- [ ] Post-undo regenerate flow (generates new message)
+- [ ] Post-undo edit flow (lets user pick which commit to edit)
+- [ ] Post-undo cancel (leaves changes staged)
 - [ ] `[y]` copy to clipboard (macOS/Linux/Windows)
 - [ ] Clipboard fallback chain on Linux (xclip absent, xclip broken, etc.)
 - [ ] `[f] Retry with another provider` on transient API error

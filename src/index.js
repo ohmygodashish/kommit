@@ -4,10 +4,10 @@ import { join } from 'path';
 import process from 'process';
 
 import { loadConfig, runInitWizard, runSetWizard, resolveProvider, resolveSkill, getAvailableProviders } from './config.js';
-import { getDiff, getAllChanges, commit, stageTracked, stageFiles, unstageAll, getRepoRoot } from './git.js';
+import { getDiff, getAllChanges, commit, stageTracked, stageFiles, unstageAll, getRepoRoot, getLastCommits, isMergeCommit, isCommitPushed, undoCommits } from './git.js';
 import { generateMessage, isRetryable } from './llm.js';
 import { buildPrompt, buildMultiCommitPrompt, parseResponse, parseMultiResponse, validateSubject } from './prompt.js';
-import { promptAction, editMessage, promptError, promptSelectProvider, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, withSpinner } from './ui.js';
+import { promptAction, editMessage, promptError, promptSelectProvider, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, withSpinner, promptUndoConfirmation, promptUndoAction } from './ui.js';
 import { parseArgs, getApiKey, printHelp, getVersion } from './args.js';
 import { copyToClipboard } from './clipboard.js';
 
@@ -461,6 +461,225 @@ export async function runMultiCommitFlow({ flags, config, auth, provider, provid
   }
 }
 
+export async function runUndoFlow({ flags, config, auth, provider, providerConfig, apiKey }) {
+  const count = flags.undoCount;
+  
+  if (count < 1) {
+    console.error('kommit: Count must be at least 1');
+    _exit(1);
+  }
+  
+  let commits;
+  try {
+    commits = await getLastCommits(count);
+  } catch (err) {
+    console.error(`kommit: ${err.message}`);
+    _exit(1);
+  }
+  
+  if (commits.length < count) {
+    console.error(`kommit: Cannot undo ${count} commits. Repository only has ${commits.length} commits.`);
+    _exit(1);
+  }
+  
+  for (const commit of commits) {
+    if (await isMergeCommit(commit.hash)) {
+      console.error(`kommit: Cannot undo merge commit ${commit.shortHash}. Use \`git revert\` instead.`);
+      _exit(1);
+    }
+  }
+  
+  const pushedCommits = new Set();
+  for (const commit of commits) {
+    if (await isCommitPushed(commit.hash)) {
+      pushedCommits.add(commit.hash);
+    }
+  }
+  
+  if (flags.dryRun) {
+    console.log('');
+    console.log(`Would undo ${count} commit${count > 1 ? 's' : ''} (dry run):`);
+    console.log('─────────────────────────');
+    for (const commit of commits) {
+      const pushedTag = pushedCommits.has(commit.hash) ? ' [pushed]' : '';
+      console.log(`${commit.shortHash} ${commit.subject}${pushedTag}`);
+      if (commit.body) {
+        console.log(`  ${commit.body.split('\n')[0]}`);
+      }
+    }
+    console.log('─────────────────────────');
+    if (pushedCommits.size > 0) {
+      console.log(`(${pushedCommits.size} pushed)`);
+    }
+    console.log('');
+    console.log('No changes made (dry run mode).');
+    _exit(0);
+  }
+  
+  const action = await promptUndoConfirmation(commits, pushedCommits);
+  
+  if (action === 'cancel') {
+    _exit(0);
+  }
+  
+  try {
+    await undoCommits(count);
+  } catch (err) {
+    console.error(`kommit: ${err.message}`);
+    _exit(1);
+  }
+  
+  console.log('');
+  console.log(`Undone ${count} commit${count > 1 ? 's' : ''}: ${commits.map(c => c.shortHash).join(', ')} → changes are now staged`);
+  
+  const postAction = await promptUndoAction(count);
+  
+  if (postAction === 'cancel') {
+    _exit(0);
+  }
+  
+  if (postAction === 'regenerate') {
+    let diffResult;
+    try {
+      diffResult = await getDiff(providerConfig);
+    } catch (err) {
+      console.error(`kommit: ${err.message}`);
+      _exit(1);
+    }
+    
+    if (flags.verbose) {
+      printVerbose('GIT DIFF', diffResult.diff);
+    }
+    
+    const { system: systemPrompt, user: userPrompt, warning } = await buildPrompt(diffResult.diff, config);
+    if (warning) {
+      console.warn(`kommit: ${warning}`);
+    }
+    
+    const originalProvider = provider;
+    const originalProviderConfig = providerConfig;
+    const originalApiKey = apiKey;
+    
+    let currentMessage = await generateWithFallback({
+      config,
+      auth,
+      flags,
+      systemPrompt,
+      userPrompt,
+      originalProvider,
+      originalProviderConfig,
+      originalApiKey,
+      spinnerMessage: 'Generating commit message...',
+      parse: rawResponse => {
+        const message = parseResponse(rawResponse);
+        if (!validateSubject(message.subject)) {
+          console.warn(`kommit: Warning: subject does not match Conventional Commit format: "${message.subject}"`);
+        }
+        return message;
+      },
+      allowRawFallback: true
+    });
+    
+    if (!currentMessage) {
+      _exit(1);
+    }
+    
+    let regenerateCount = 0;
+    
+    while (true) {
+      const action = await promptAction(currentMessage, diffResult.truncated, diffResult.source);
+      
+      if (action === 'cancel') {
+        _exit(0);
+      }
+      
+      if (action === 'use' || action === 'stageAndUse') {
+        try {
+          const result = await commitMessage(currentMessage);
+          console.log(`Committed: ${result.hash}`);
+        } catch (err) {
+          console.error(`kommit: ${err.message}`);
+          _exit(err.exitCode || 1);
+        }
+        _exit(0);
+      }
+      
+      if (action === 'copy') {
+        try {
+          await copyToClipboard(buildFullMessage(currentMessage));
+          console.log('\n📋 Copied to clipboard!\n');
+          _exit(0);
+        } catch (err) {
+          console.error(`\nkommit: ${err.message}\n`);
+          _exit(1);
+        }
+      }
+      
+      if (action === 'edit') {
+        currentMessage = await editMessage(currentMessage);
+        continue;
+      }
+      
+      if (action === 'regenerate') {
+        regenerateCount++;
+        const modifiedUserPrompt = `${userPrompt}\n\nHint: ${getVariationHint(regenerateCount)}`;
+        const regenerated = await generateWithFallback({
+          config,
+          auth,
+          flags,
+          systemPrompt,
+          userPrompt: modifiedUserPrompt,
+          originalProvider,
+          originalProviderConfig,
+          originalApiKey,
+          spinnerMessage: 'Regenerating commit message...',
+          parse: rawResponse => {
+            const message = parseResponse(rawResponse);
+            if (!validateSubject(message.subject)) {
+              console.warn(`kommit: Warning: subject does not match Conventional Commit format: "${message.subject}"`);
+            }
+            return message;
+          },
+          resetToOriginalOnRetry: true,
+          allowRawFallback: true
+        });
+        
+        if (regenerated) {
+          currentMessage = regenerated;
+        }
+      }
+    }
+  }
+  
+  if (postAction === 'edit') {
+    const selectedIndex = await promptSelectCommitToEdit(commits.map(c => ({
+      subject: c.subject,
+      body: c.body,
+      files: []
+    })));
+    
+    if (selectedIndex === null) {
+      _exit(0);
+    }
+    
+    const selectedCommit = commits[selectedIndex];
+    const edited = await editMessage({ subject: selectedCommit.subject, body: selectedCommit.body });
+    
+    console.log('');
+    console.log('Edited message:');
+    console.log('─────────────────────────');
+    console.log(edited.subject);
+    if (edited.body) {
+      console.log('');
+      console.log(edited.body);
+    }
+    console.log('─────────────────────────');
+    console.log('');
+    console.log('Changes are staged. Use `git commit` to commit with this message, or run kommit again.');
+    _exit(0);
+  }
+}
+
 export async function main() {
   const flags = parseArgs(process.argv.slice(2));
 
@@ -536,6 +755,11 @@ export async function main() {
 
   const skillName = resolveSkill(config, flags, process.env);
   config._resolvedSkill = skillName;
+
+  if (flags.undo) {
+    await runUndoFlow({ flags, config, auth, provider, providerConfig, apiKey });
+    return;
+  }
 
   if (flags.multi) {
     await runMultiCommitFlow({ flags, config, auth, provider, providerConfig, apiKey });
