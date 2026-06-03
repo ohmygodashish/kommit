@@ -38,6 +38,7 @@ kommit [options]
 | `--init` | Run the interactive setup wizard (creates config if missing, merges auth keys) |
 | `--set` | Configure default provider, model, or skill name |
 | `--multi` | Split the current working tree into multiple logical commits |
+| `--undo [count]` | Undo the last N commits (default: 1), leaving changes staged |
 | `--provider <name>` | Override the default provider for this run |
 | `--skill <name>` | Override skill for this run |
 | `--dry-run` | Generate and show the message without committing |
@@ -104,6 +105,31 @@ The plan includes staged changes, unstaged tracked changes, and untracked files.
 - **[c]** — Cancel without committing
 
 `--multi` temporarily unstages everything before staging the selected file groups commit-by-commit. Files you do not select remain in your working tree.
+
+### Undo Mode
+
+Use `kommit --undo` to undo commits while preserving your changes in the staging area.
+
+```bash
+# Undo the last commit
+kommit --undo
+
+# Undo the last 3 commits
+kommit --undo 3
+
+# Preview what would be undone without executing
+kommit --undo 2 --dry-run
+```
+
+**Safety features:**
+- Blocks merge commits (use `git revert` instead)
+- Warns when commits have been pushed to remote
+- Requires confirmation before executing
+
+**After undoing**, you can:
+- **[r]** — Regenerate a new commit message for the staged changes
+- **[e]** — Edit one of the original commit messages
+- **[c]** — Cancel (leave changes staged for manual commit)
 
 ## Configuration
 
