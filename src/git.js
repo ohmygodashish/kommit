@@ -263,3 +263,69 @@ export async function commit(messagePath) {
     );
   }
 }
+
+export async function getLastCommits(count) {
+  try {
+    const { stdout } = await execGit(['log', `-${count}`, '--format=%H|%h|%s|%b|%P']);
+    const lines = stdout.trim().split('\n').filter(Boolean);
+    
+    return lines.map(line => {
+      const [hash, shortHash, subject, body, parents] = line.split('|');
+      return {
+        hash,
+        shortHash,
+        subject,
+        body: body || '',
+        parents: parents ? parents.split(' ') : []
+      };
+    });
+  } catch (err) {
+    throw Object.assign(
+      new Error(`Failed to get commit history: ${err.stderr || err.message}`),
+      { code: 'history_failed' }
+    );
+  }
+}
+
+export async function isMergeCommit(hash) {
+  try {
+    await execGit(['rev-parse', `${hash}^2`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function isCommitPushed(commitHash) {
+  try {
+    const { stdout } = await execGit(['branch', '-r', '--contains', commitHash]);
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export async function undoCommits(count) {
+  try {
+    const { stdout: previousHead } = await execGit(['rev-parse', 'HEAD']);
+    await execGit(['reset', '--soft', `HEAD~${count}`]);
+    const { stdout: newHead } = await execGit(['rev-parse', 'HEAD']);
+    
+    return {
+      previousHead: previousHead.trim(),
+      newHead: newHead.trim(),
+      commitCount: count
+    };
+  } catch (err) {
+    if (err.stderr && err.stderr.includes('fatal: ambiguous argument')) {
+      throw Object.assign(
+        new Error(`Cannot undo ${count} commits. Not enough commits in history.`),
+        { code: 'undo_failed' }
+      );
+    }
+    throw Object.assign(
+      new Error(`git reset failed:\n${err.stderr || err.message}`),
+      { code: 'undo_failed' }
+    );
+  }
+}
