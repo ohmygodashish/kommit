@@ -266,17 +266,22 @@ export async function commit(messagePath) {
 
 export async function getLastCommits(count) {
   try {
-    const { stdout } = await execGit(['log', `-${count}`, '--format=%H|%h|%s|%b|%P']);
-    const lines = stdout.trim().split('\n').filter(Boolean);
+    const { stdout } = await execGit([
+      'log', 
+      `-${count}`, 
+      '--format=%H%x01%h%x01%s%x01%b%x01%P%x00'
+    ]);
     
-    return lines.map(line => {
-      const [hash, shortHash, subject, body, parents] = line.split('|');
+    const records = stdout.split('\0').filter(r => r.trim());
+    
+    return records.map(record => {
+      const [hash, shortHash, subject, body, parents] = record.trim().split('\x01');
       return {
         hash,
         shortHash,
         subject,
         body: body || '',
-        parents: parents ? parents.split(' ') : []
+        parents: parents ? parents.trim().split(' ').filter(Boolean) : []
       };
     });
   } catch (err) {
