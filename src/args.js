@@ -3,6 +3,8 @@ export function parseArgs(argv) {
     init: false,
     set: false,
     multi: false,
+    undo: false,
+    undoCount: 1,
     provider: undefined,
     skill: undefined,
     dryRun: false,
@@ -22,6 +24,12 @@ export function parseArgs(argv) {
         break;
       case '--multi':
         flags.multi = true;
+        break;
+      case '--undo':
+        flags.undo = true;
+        if (argv[i + 1] && /^\d+$/.test(argv[i + 1])) {
+          flags.undoCount = parseInt(argv[++i], 10);
+        }
         break;
       case '--provider':
         flags.provider = argv[++i];
@@ -59,6 +67,7 @@ Options:
   --init            Run the interactive setup wizard
   --set             Configure default provider, model, or skill
   --multi           Split changes into multiple logical commits
+  --undo [count]    Undo the last N commits (default: 1), leaving changes staged
   --provider <name> Override the default LLM provider for this run
   --skill <name>    Override the skill for this run
   --dry-run         Generate and show the message without committing
