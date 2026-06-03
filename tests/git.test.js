@@ -227,6 +227,28 @@ describe('git.js', () => {
       assert.ok(commits.length > 0);
       assert.ok(commits.length <= 100);
     });
+
+    it('handles commits with multi-line bodies correctly', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'multiline1.txt'), 'content1');
+      await execGit(['add', 'multiline1.txt']);
+      await execGit(['commit', '-m', 'multiline commit 1', '-m', 'This is line 1 of the body.\nThis is line 2 of the body.\nThis is line 3 of the body.']);
+
+      await writeFile(join(repoDir, 'multiline2.txt'), 'content2');
+      await execGit(['add', 'multiline2.txt']);
+      await execGit(['commit', '-m', 'multiline commit 2', '-m', 'Another multi-line body.\nWith two lines.']);
+
+      const commits = await getLastCommits(2);
+      assert.strictEqual(commits.length, 2);
+      assert.strictEqual(commits[0].subject, 'multiline commit 2');
+      assert.ok(commits[0].body.includes('Another multi-line body'));
+      assert.ok(commits[0].body.includes('With two lines'));
+      assert.strictEqual(commits[1].subject, 'multiline commit 1');
+      assert.ok(commits[1].body.includes('This is line 1'));
+      assert.ok(commits[1].body.includes('This is line 3'));
+    });
   });
 
   describe('isMergeCommit', () => {
@@ -241,12 +263,15 @@ describe('git.js', () => {
       await execGit(['reset', '--hard', 'HEAD']);
       await execGit(['clean', '-fd']);
 
+      const { stdout: currentBranch } = await execGit(['rev-parse', '--abbrev-ref', 'HEAD']);
+      const baseBranch = currentBranch.trim();
+
       await execGit(['checkout', '-b', 'feature-branch']);
       await writeFile(join(repoDir, 'feature.txt'), 'feature');
       await execGit(['add', 'feature.txt']);
       await execGit(['commit', '-m', 'add feature']);
 
-      await execGit(['checkout', 'main']);
+      await execGit(['checkout', baseBranch]);
       await execGit(['merge', 'feature-branch', '--no-ff']);
 
       const { stdout } = await execGit(['rev-parse', 'HEAD']);
