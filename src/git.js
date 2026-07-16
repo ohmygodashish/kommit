@@ -1,12 +1,10 @@
 import { execFile } from 'child_process';
+import { copyFile, mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
-
-function normalizeGitPath(path) {
-  if (!path) return path;
-  return path.startsWith('"') && path.endsWith('"') ? JSON.parse(path) : path;
-}
 
 function execGit(args, options = {}) {
   return execFileAsync('git', args, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, ...options });
@@ -30,9 +28,10 @@ export async function getDiff(providerConfig) {
 
   let diff = '';
   let source = 'staged';
+  let stagePaths = [];
 
   try {
-    const result = await execGit(['diff', '--cached']);
+    const result = await execGit(['diff', '--cached', '--find-renames']);
     diff = result.stdout;
   } catch {
     diff = '';
@@ -40,8 +39,9 @@ export async function getDiff(providerConfig) {
 
   if (!diff.trim()) {
     try {
-      const result = await execGit(['diff']);
-      diff = result.stdout;
+      const changes = await getTemporaryIndexChanges({ includeUntracked: false });
+      diff = changes.diff;
+      stagePaths = changes.files.flatMap(file => file.stagePaths);
       source = 'unstaged';
     } catch {
       diff = '';
@@ -58,64 +58,21 @@ export async function getDiff(providerConfig) {
   return {
     diff: truncatedDiff,
     truncated,
-    source
+    source,
+    stagePaths
   };
 }
 
 export async function getAllChanges(providerConfig) {
   await ensureRepo();
 
-  const files = await getChangedFiles();
+  const { diff, files } = await getTemporaryIndexChanges({ includeUntracked: true });
   if (files.length === 0) {
     throw Object.assign(new Error('No changes detected to commit.'), { code: 'no_changes' });
   }
 
-  let trackedDiff = '';
-  try {
-    const result = await execGit(['diff', 'HEAD']);
-    trackedDiff = result.stdout;
-  } catch {
-    // HEAD may be unborn (no commits yet). Fall back to staged + unstaged separately.
-    const parts = [];
-    try {
-      const staged = await execGit(['diff', '--cached']);
-      if (staged.stdout) parts.push(staged.stdout);
-    } catch {
-      // no staged diff
-    }
-    try {
-      const unstaged = await execGit(['diff']);
-      if (unstaged.stdout) parts.push(unstaged.stdout);
-    } catch {
-      // no unstaged diff
-    }
-    trackedDiff = parts.join('\n');
-  }
-
-  const untrackedDiffs = [];
-  for (const file of files) {
-    if (file.status !== '??') continue;
-    try {
-      const result = await execGit(['diff', '--no-index', '--', '/dev/null', file.path]);
-      untrackedDiffs.push(result.stdout);
-    } catch (err) {
-      if (typeof err.stdout === 'string' && err.stdout) {
-        untrackedDiffs.push(err.stdout);
-        continue;
-      }
-      throw Object.assign(
-        new Error(`Failed to diff untracked file '${file.path}': ${err.stderr || err.message}`),
-        { code: 'diff_failed' }
-      );
-    }
-  }
-
-  const combinedDiff = [trackedDiff.trimEnd(), ...untrackedDiffs.map(diff => diff.trimEnd())]
-    .filter(Boolean)
-    .join('\n');
-
   const maxDiffLength = providerConfig.maxDiffLength || 12000;
-  const { truncatedDiff, truncated } = truncateDiff(combinedDiff, maxDiffLength);
+  const { truncatedDiff, truncated } = truncateDiff(diff, maxDiffLength);
 
   return {
     diff: truncatedDiff,
@@ -124,33 +81,84 @@ export async function getAllChanges(providerConfig) {
   };
 }
 
-async function getChangedFiles() {
-  const { stdout } = await execGit(['status', '--porcelain']);
-  const files = [];
+async function getTemporaryIndexChanges({ includeUntracked }) {
+  return withTemporaryIndex(async options => {
+    const [{ stdout: statusOutput }, untrackedPaths] = await Promise.all([
+      execGit(['diff', '--cached', '--name-status', '-z', '--find-renames'], options),
+      getUntrackedPaths()
+    ]);
+    const allFiles = parseNameStatus(statusOutput, untrackedPaths);
+    const files = includeUntracked ? allFiles : allFiles.filter(file => file.changeType !== 'A');
+    const stagePaths = files.flatMap(file => file.stagePaths);
 
-  for (const line of stdout.split('\n')) {
-    if (!line.trim()) continue;
-
-    const status = line.slice(0, 2);
-    const rawPath = line.slice(3);
-
-    if (status === '??') {
-      const path = normalizeGitPath(rawPath);
-      files.push({
-        status,
-        path,
-        displayPath: path,
-        stagePaths: [path]
-      });
-      continue;
+    if (stagePaths.length === 0) {
+      return { diff: '', files };
     }
 
-    if (status.includes('R') && rawPath.includes(' -> ')) {
-      const [oldPathRaw, newPathRaw] = rawPath.split(' -> ');
-      const oldPath = normalizeGitPath(oldPathRaw);
-      const newPath = normalizeGitPath(newPathRaw);
+    const { stdout: diff } = await execGit([
+      'diff',
+      '--cached',
+      '--find-renames',
+      '--',
+      ...stagePaths.map(toLiteralPathspec)
+    ], options);
+
+    return { diff, files };
+  });
+}
+
+// Let Git detect working-tree renames without changing the user's real index.
+async function withTemporaryIndex(callback) {
+  const { stdout } = await execGit(['rev-parse', '--git-path', 'index']);
+  const indexPath = resolve(stdout.trim());
+  const directory = await mkdtemp(join(tmpdir(), 'kommit-index-'));
+  const temporaryIndex = join(directory, 'index');
+
+  try {
+    try {
+      await copyFile(indexPath, temporaryIndex);
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+
+    const options = {
+      env: { ...process.env, GIT_INDEX_FILE: temporaryIndex }
+    };
+    await execGit(['add', '-A'], options);
+    return await callback(options);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+async function getUntrackedPaths() {
+  const { stdout } = await execGit(['status', '--porcelain=v1', '-z']);
+  const paths = new Set();
+  const entries = stdout.split('\0');
+
+  for (const entry of entries) {
+    if (entry.startsWith('?? ')) {
+      paths.add(entry.slice(3));
+    }
+  }
+
+  return paths;
+}
+
+function parseNameStatus(output, untrackedPaths) {
+  const entries = output.split('\0');
+  const files = [];
+
+  for (let index = 0; index < entries.length - 1;) {
+    const status = entries[index++];
+    const changeType = status[0];
+    const oldPath = entries[index++];
+
+    if (changeType === 'R' || changeType === 'C') {
+      const newPath = entries[index++];
       files.push({
-        status,
+        status: 'R ',
+        changeType,
         path: newPath,
         displayPath: `${oldPath} -> ${newPath}`,
         stagePaths: [oldPath, newPath]
@@ -158,16 +166,20 @@ async function getChangedFiles() {
       continue;
     }
 
-    const path = normalizeGitPath(rawPath);
     files.push({
-      status,
-      path,
-      displayPath: path,
-      stagePaths: [path]
+      status: changeType === 'A' && untrackedPaths.has(oldPath) ? '??' : `${changeType} `,
+      changeType,
+      path: oldPath,
+      displayPath: oldPath,
+      stagePaths: [oldPath]
     });
   }
 
   return files;
+}
+
+function toLiteralPathspec(path) {
+  return `:(literal)${path}`;
 }
 
 function truncateDiff(diff, maxLength) {
@@ -218,8 +230,11 @@ function truncateDiff(diff, maxLength) {
   return { truncatedDiff: diff, truncated: false };
 }
 
-export async function stageTracked() {
+export async function stageTracked(renamePaths = []) {
   try {
+    if (renamePaths.length > 0) {
+      await execGit(['add', '-A', '--', ...renamePaths.map(toLiteralPathspec)]);
+    }
     await execGit(['add', '-u']);
   } catch (err) {
     throw Object.assign(
@@ -242,7 +257,7 @@ export async function unstageAll() {
 
 export async function stageFiles(files) {
   try {
-    await execGit(['add', '--', ...files]);
+    await execGit(['add', '-A', '--', ...files.map(toLiteralPathspec)]);
   } catch (err) {
     throw Object.assign(
       new Error(`git add failed:\n${err.stderr || err.message}`),
