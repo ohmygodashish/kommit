@@ -234,7 +234,7 @@ export async function runSingleCommitFlow({ flags, config, auth, provider, provi
 
       if (action === 'stageAndUse') {
         try {
-          await stageTracked();
+          await stageTracked(diffResult.stagePaths);
         } catch (err) {
           console.error(`kommit: ${err.message}`);
           _exit(1);
