@@ -7,6 +7,7 @@ A lightweight Node.js CLI utility that generates commit messages from git diffs 
 - LLM-powered message generation (OpenAI, Anthropic, Google, OpenRouter, Ollama, LM Studio)
 - Conventional Commits enforcement (`feat:`, `fix:`, `chore:`, etc.)
 - Staged diff analysis with unstaged fallback
+- Filesystem rename detection via temporary Git index (without mutating the user's real index)
 - Intelligent diff truncation for large changesets
 - Inline editing of suggested messages
 - Copy message to clipboard (`[y]`) with cross-platform support (macOS, Windows, Linux)
@@ -28,22 +29,28 @@ kommit/
 │   ├── index.js            # Main entry: orchestrates flow, handles flags
 │   ├── args.js             # Manual CLI argument parsing
 │   ├── config.js           # Config & auth read/write, migration, env overrides
-│   ├── git.js              # Diff extraction, hunk parsing, intelligent truncation
+│   ├── git.js              # Diff extraction, rename detection, hunk truncation
 │   ├── llm.js              # Provider routing, API calls, timeouts, retries
 │   ├── prompt.js           # Prompt template engineering + skill loading
 │   ├── ui.js               # Interactive prompts & inline editing
 │   └── clipboard.js        # Cross-platform clipboard support (pbcopy, xclip, wl-copy, etc.)
+├── docs/
+│   └── tool-kommit-spec.md # This file
 ├── tests/
+│   ├── args.test.js
 │   ├── clipboard.test.js
+│   ├── config-io.test.js
 │   ├── config.test.js
+│   ├── git-edge.test.js
 │   ├── git.test.js
 │   ├── index.test.js
 │   ├── llm.test.js
+│   ├── prompt-edge.test.js
 │   ├── prompt.test.js
+│   ├── ui-more.test.js
 │   └── ui.test.js
 ├── package.json
-├── README.md
-└── SPEC.md                 # This file
+└── README.md
 ```
 
 ### User Config Layout (XDG Base Directory)
@@ -386,27 +393,32 @@ export function getAvailableProviders(config, auth, env)
 ```js
 /**
  * Gets diff from git. Prefers staged, falls back to unstaged.
- * Intelligently truncates at hunk boundaries.
+ * Staged path uses `git diff --cached --find-renames`.
+ * Unstaged path uses a temporary index so Git can detect working-tree renames
+ * without mutating the user's real index. Intelligently truncates at hunk boundaries.
  * @param {object} providerConfig — contains maxDiffLength
- * @returns {Promise<{diff: string, truncated: boolean, source: 'staged'|'unstaged'}>}
+ * @returns {Promise<{diff: string, truncated: boolean, source: 'staged'|'unstaged', stagePaths: string[]}>}
  * @throws {GitError} code: 'not_a_repo' | 'no_changes'
  */
 export async function getDiff(providerConfig)
 
 /**
- * Gets the combined working-tree diff against HEAD, including untracked files,
- * and returns file metadata for multi-commit planning.
+ * Gets the combined working-tree diff (including untracked files) via a temporary
+ * index with rename detection, and returns file metadata for multi-commit planning.
  * @param {object} providerConfig — contains maxDiffLength
- * @returns {Promise<{diff: string, truncated: boolean, files: Array<{status: string, path: string, displayPath: string, stagePaths: string[]}>}>}
+ * @returns {Promise<{diff: string, truncated: boolean, files: Array<{status: string, changeType: string, path: string, displayPath: string, stagePaths: string[]}>}>}
  */
 export async function getAllChanges(providerConfig)
 
 /**
- * Stages all tracked file modifications using git add -u.
+ * Stages tracked modifications for commit.
+ * When renamePaths is non-empty, first runs `git add -A -- <paths>` so filesystem
+ * renames stage as renames, then always runs `git add -u`.
+ * @param {string[]} [renamePaths=[]] — old/new paths from rename detection
  * @returns {Promise<void>}
  * @throws {GitError} code: 'stage_failed', includes stderr
  */
-export async function stageTracked()
+export async function stageTracked(renamePaths = [])
 
 /**
  * Unstages all currently staged changes.
@@ -672,14 +684,29 @@ Cross-platform clipboard support:
 ## Git Diff Handling
 
 ### Flow
-1. Run `git diff --cached`
-2. If empty → print: `"No staged changes found. Using unstaged diff."` and run `git diff`
+1. Run `git diff --cached --find-renames`
+2. If empty → print: `"No staged changes found. Using unstaged diff."` and compute unstaged changes via a **temporary index** (see below)
 3. If still empty → exit: `"kommit: No changes detected to commit."`
 4. Parse diff into logical units: file headers + hunks
 5. Accumulate character count. Keep all file headers (high signal, low cost) and hunks in order.
 6. When adding the next complete hunk would exceed the provider's `maxDiffLength`, stop at the hunk boundary.
 7. If truncated → append `"\n\n[diff truncated...]"`
-8. Return `{ diff: string, truncated: boolean, source: 'staged' | 'unstaged' }`
+8. Return `{ diff: string, truncated: boolean, source: 'staged' | 'unstaged', stagePaths: string[] }`
+
+### Temporary Index Rename Detection
+Plain `git diff` (unstaged) does not detect filesystem renames (`mv old new`) as renames — Git reports them as delete + add. To fix this without touching the user's real index:
+
+1. Resolve the real index path via `git rev-parse --git-path index`
+2. Create a temp dir (`os.tmpdir()/kommit-index-*`) and copy the real index into it (or start empty if no index exists)
+3. Set `GIT_INDEX_FILE` to the temporary index for subsequent git commands
+4. Run `git add -A` against the temporary index only
+5. Run `git diff --cached --name-status -z --find-renames` and `git diff --cached --find-renames` against that index
+6. Parse NUL-delimited name-status output:
+   - Renames/copies (`R`/`C`): `displayPath = "old -> new"`, `stagePaths = [old, new]`
+   - Other changes: `stagePaths = [path]`; untracked adds keep status `??`
+7. Always delete the temporary index directory in a `finally` block
+
+`getAllChanges()` uses the same temporary-index path (with untracked files included) for multi-commit planning. Paths passed to git are wrapped as `:(literal)<path>` pathspecs so special characters are handled safely.
 
 ### Intelligent Hunk Truncation Algorithm
 - **Never truncate mid-hunk.** A partial hunk is meaningless to both humans and LLMs.
@@ -694,6 +721,10 @@ Cross-platform clipboard support:
 | Diff exactly equals `maxDiffLength` | Do **not** append `[diff truncated...]` if the full diff fits exactly |
 | Empty hunk (whitespace-only change) | Include it; the LLM can infer `style:` or `refactor:` from context |
 | Submodules | `git diff` includes submodule summary lines — treat as file headers, preserve them |
+| Filesystem rename (`mv old new`) | Detected as a single rename via temporary index + `--find-renames`; not as delete/add |
+| Already staged rename (`git mv`) | Preserved; staged path uses `--find-renames` |
+| Unrelated untracked files during unstaged rename | Not pulled into the unstaged single-commit diff (`includeUntracked: false`) |
+| Filename containing ` -> ` | Not treated as a rename; parsed from NUL-delimited name-status, not string split |
 
 ---
 
@@ -811,7 +842,7 @@ Replace session cookies with stateless JWT tokens
 
 #### Options
 - **`[u]`** (staged only) — Write the message to a temp file and run `git commit -F <tmpfile>`. On success, print the commit hash. Delete the temp file immediately afterward.
-- **`[s]`** (unstaged only) — Run `git add -u` to stage all tracked file modifications, then write the message to a temp file and run `git commit -F <tmpfile>`. This prevents the empty-commit error that occurs when `git commit` is run with no staged changes.
+- **`[s]`** (unstaged only) — Call `stageTracked(diffResult.stagePaths)`: if rename paths were detected, run `git add -A -- <paths>` first so renames stage correctly, then `git add -u` for remaining tracked modifications. Write the message to a temp file and run `git commit -F <tmpfile>`. This prevents the empty-commit error that occurs when `git commit` is run with no staged changes.
 - **`[y]`** — Copy the full message (subject + body) to the system clipboard. Exits with code `0` on success, code `1` on failure. Cross-platform support: macOS (`pbcopy`), Windows (`clip.exe`), Linux (`xclip` → `xsel` → `wl-copy` fallback chain).
 - **`[e]`** — Inline editing: use `@clack/prompts` text input to edit the subject line. Then prompt for the body in a second text input (multiline if supported by the library, otherwise single-line with instruction to use `\n` for newlines). After editing, return to the action prompt.
 - **`[r]`** — Call the LLM again. Append a subtle variation hint based on a retry counter:
@@ -924,7 +955,7 @@ None required for pure JavaScript.
 ```json
 {
   "name": "kommit-cli",
-  "version": "0.2.1",
+  "version": "0.4.1",
   "description": "AI powered Conventional Commit message generator",
   "type": "module",
   "main": "./src/index.js",
@@ -975,10 +1006,9 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 ## Security Considerations
 - Both config and auth files are created with `0o600` (read/write owner only).
 - API keys are never logged or printed, even with `--verbose`.
-- No diff data is cached to disk except temporary commit message files, which are:
-  - Written to `os.tmpdir()` with pattern `kommit-msg-{timestamp}-{pid}.txt`
-  - Deleted in a `finally` block around the commit operation
-  - Deleted via `process.on('SIGINT')` and `process.on('SIGTERM')` handlers if the process is interrupted
+- No diff data is cached to disk except temporary commit message files and temporary Git index copies, which are:
+  - Commit messages: written to `os.tmpdir()` with pattern `kommit-msg-{timestamp}-{pid}.txt`, deleted in a `finally` block around the commit operation, and cleaned up via `process.on('SIGINT')` / `process.on('SIGTERM')` if interrupted
+  - Temporary indexes: created under `os.tmpdir()/kommit-index-*` for rename detection only; never replace the user's real index; always removed in a `finally` block
 
 ---
 
@@ -987,7 +1017,7 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 ### Unit Tests (Recommended Framework: `node:test` + `node:assert`)
 | Module | Test Cases |
 |--------|------------|
-| `git.js` | Mock `child_process` output for staged/unstaged/no-changes scenarios; verify hunk truncation boundaries |
+| `git.js` | Staged/unstaged/no-changes scenarios; hunk truncation; temporary-index rename detection; `stageTracked` with rename paths; already-staged renames |
 | `prompt.js` | Test JSON parsing with/without fences; test Conventional Commit regex against valid and invalid subjects; test skill file loading |
 | `config.js` | Test migration logic (v0 → v1); test provider/skill resolution priority; test config/auth file I/O |
 | `llm.js` | Mock `fetch` for each provider group; test retry logic; test timeout behavior |
@@ -1008,6 +1038,9 @@ All error messages use the `kommit:` prefix for consistency and discoverability.
 - [ ] `--set` fails gracefully when config is missing
 - [ ] Staged diff workflow
 - [ ] Unstaged fallback workflow with `[s] Stage all and use`
+- [ ] Filesystem rename detected as rename (not delete/add) in unstaged diff
+- [ ] `[s]` stages rename paths correctly after unstaged rename detection
+- [ ] Already staged renames preserved with `--find-renames`
 - [ ] Diff truncation on large changesets
 - [ ] Each provider group (OpenAI-compatible, Anthropic, Google)
 - [ ] `[e]` inline editing
