@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import { getDiff, getAllChanges, stageTracked, stageFiles, unstageAll, commit, getRepoRoot, getLastCommits, isMergeCommit, isCommitPushed, undoCommits } from '../src/git.js';
-import { mkdtemp, writeFile, rm, mkdir } from 'fs/promises';
+import { mkdtemp, writeFile, rm, mkdir, rename } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFile } from 'child_process';
@@ -56,6 +56,31 @@ describe('git.js', () => {
       const result = await getDiff({ maxDiffLength: 12000 });
       assert.strictEqual(result.source, 'unstaged');
       assert.ok(result.diff.includes('baseline.txt'));
+    });
+
+    it('detects filesystem renames without staging unrelated untracked files', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'rename-source.txt'), 'rename content');
+      await execGit(['add', 'rename-source.txt']);
+      await execGit(['commit', '-m', 'add rename source']);
+      await rename(join(repoDir, 'rename-source.txt'), join(repoDir, 'rename-target.txt'));
+      await writeFile(join(repoDir, 'unrelated.txt'), 'leave me untracked');
+
+      const result = await getDiff({ maxDiffLength: 12000 });
+
+      assert.strictEqual(result.source, 'unstaged');
+      assert.ok(result.diff.includes('rename from rename-source.txt'));
+      assert.ok(result.diff.includes('rename to rename-target.txt'));
+      assert.deepStrictEqual(result.stagePaths, ['rename-source.txt', 'rename-target.txt']);
+
+      await stageTracked(result.stagePaths);
+
+      const { stdout: staged } = await execGit(['diff', '--cached', '--name-status']);
+      assert.match(staged, /^R\d+\trename-source\.txt\trename-target\.txt/m);
+      const { stdout: status } = await execGit(['status', '--porcelain']);
+      assert.ok(status.includes('?? unrelated.txt'));
     });
 
     it('throws when no changes', async () => {

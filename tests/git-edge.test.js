@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { mkdtemp, writeFile, rm } from 'fs/promises';
+import { mkdtemp, writeFile, rm, rename } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFile } from 'child_process';
@@ -48,20 +48,38 @@ describe('git.js — edge cases', () => {
       );
     });
 
-    it('parses renamed files correctly', async () => {
+    it('detects filesystem renames as one change', async () => {
       await execGit(['reset', '--hard', 'HEAD']);
       await execGit(['clean', '-fd']);
 
       await writeFile(join(repoDir, 'rename-me.txt'), 'content');
       await execGit(['add', 'rename-me.txt']);
       await execGit(['commit', '-m', 'add rename-me']);
-      await execGit(['mv', 'rename-me.txt', 'renamed.txt']);
+      await rename(join(repoDir, 'rename-me.txt'), join(repoDir, 'renamed.txt'));
 
       const result = await getAllChanges({ maxDiffLength: 12000 });
       const renameFile = result.files.find(f => f.displayPath.includes('->'));
       assert.ok(renameFile, 'should find renamed file');
       assert.ok(renameFile.stagePaths.includes('rename-me.txt'));
       assert.ok(renameFile.stagePaths.includes('renamed.txt'));
+      assert.ok(result.diff.includes('rename from rename-me.txt'));
+      assert.ok(result.diff.includes('rename to renamed.txt'));
+    });
+
+    it('preserves already staged renames', async () => {
+      await execGit(['reset', '--hard', 'HEAD']);
+      await execGit(['clean', '-fd']);
+
+      await writeFile(join(repoDir, 'staged-rename.txt'), 'content');
+      await execGit(['add', 'staged-rename.txt']);
+      await execGit(['commit', '-m', 'add staged rename']);
+      await execGit(['mv', 'staged-rename.txt', 'staged-renamed.txt']);
+
+      const result = await getAllChanges({ maxDiffLength: 12000 });
+      const renameFile = result.files.find(f => f.displayPath === 'staged-rename.txt -> staged-renamed.txt');
+      assert.ok(renameFile, 'should retain staged rename metadata');
+      assert.ok(result.diff.includes('rename from staged-rename.txt'));
+      assert.ok(result.diff.includes('rename to staged-renamed.txt'));
     });
 
     it('handles quoted paths from git status', async () => {

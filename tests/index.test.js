@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { mkdtemp, writeFile, rm, mkdir } from 'fs/promises';
+import { mkdtemp, writeFile, rm, mkdir, rename } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFile } from 'child_process';
@@ -156,7 +156,7 @@ describe('index.js helpers', () => {
       await writeFile(join(repoDir, 'old.txt'), 'old content');
       await execGit(['add', 'old.txt']);
       await execGit(['commit', '-m', 'add old']);
-      await execGit(['mv', 'old.txt', 'new.txt']);
+      await rename(join(repoDir, 'old.txt'), join(repoDir, 'new.txt'));
 
       const changeMap = new Map([
         ['old.txt -> new.txt', { displayPath: 'old.txt -> new.txt', stagePaths: ['old.txt', 'new.txt'] }]
