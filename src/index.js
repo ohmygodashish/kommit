@@ -8,7 +8,7 @@ import { getDiff, getAllChanges, commit, stageTracked, stageFiles, unstageAll, g
 import { generateMessage, isRetryable } from './llm.js';
 import { buildPrompt, buildMultiCommitPrompt, parseResponse, parseMultiResponse, validateSubject } from './prompt.js';
 import { promptAction, editMessage, promptError, promptSelectProvider, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, withSpinner, promptUndoConfirmation, promptUndoAction } from './ui.js';
-import { parseArgs, getApiKey, printHelp, getVersion } from './args.js';
+import { parseArgs, getApiKey, printHelp, getVersion } from './args.ts';
 import { copyToClipboard } from './clipboard.js';
 
 let _exitFn = (code) => process.exit(code);
