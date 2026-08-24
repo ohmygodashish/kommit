@@ -1,14 +1,14 @@
 import { spawn as _spawn } from 'child_process';
 
-let _spawnOverride = null;
+let _spawnOverride: typeof _spawn | null = null;
 
-export function setSpawnForTesting(spawnFn) {
+export function setSpawnForTesting(spawnFn: typeof _spawn | null): void {
   _spawnOverride = spawnFn;
 }
 
-function spawnClipboard(cmd, args, text) {
+function spawnClipboard(cmd: string, args: string[], text: string): Promise<void> {
   const spawn = _spawnOverride || _spawn;
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ['pipe', 'inherit', 'inherit'] });
 
     child.on('error', (err) => {
@@ -23,12 +23,12 @@ function spawnClipboard(cmd, args, text) {
       }
     });
 
-    child.stdin.write(text, 'utf8');
-    child.stdin.end();
+    child.stdin!.write(text, 'utf8');
+    child.stdin!.end();
   });
 }
 
-export async function copyToClipboard(text, _platform) {
+export async function copyToClipboard(text: string, _platform?: NodeJS.Platform): Promise<void> {
   const platform = _platform || process.platform;
 
   if (platform === 'darwin') {
@@ -40,7 +40,7 @@ export async function copyToClipboard(text, _platform) {
   }
 
   // Linux — try xclip, then xsel, then wl-copy
-  const errors = [];
+  const errors: string[] = [];
 
   try {
     return await spawnClipboard('xclip', ['-selection', 'clipboard'], text);
