@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { parseArgs } from '../src/args.js';
+import { parseArgs } from '../src/args.ts';
 
-describe('args.js', () => {
+describe('args.ts', () => {
   describe('parseArgs', () => {
     it('parses --undo flag without count', () => {
       const flags = parseArgs(['--undo']);

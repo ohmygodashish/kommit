@@ -1,5 +1,7 @@
-export function parseArgs(argv) {
-  const flags = {
+import type { Auth, Flags } from './types.ts';
+
+export function parseArgs(argv: string[]): Flags {
+  const flags: Flags = {
     init: false,
     set: false,
     multi: false,
@@ -57,7 +59,7 @@ export function parseArgs(argv) {
   return flags;
 }
 
-export function printHelp() {
+export function printHelp(): void {
   console.log(`kommit — AI-powered Conventional Commit message generator
 
 Usage:
@@ -83,15 +85,15 @@ Environment Variables:
 For more info: https://github.com/ohmygodashish/kommit#readme`);
 }
 
-export async function getVersion() {
+export async function getVersion(): Promise<string> {
   const { createRequire } = await import('module');
   const require = createRequire(import.meta.url);
   const pkg = require('../package.json');
   return pkg.version;
 }
 
-export function getApiKey(provider, auth, env) {
-  const envMap = {
+export function getApiKey(provider: string, auth: Auth, env: NodeJS.ProcessEnv): string {
+  const envMap: Record<string, string> = {
     openai: 'KOMMIT_OPENAI_API_KEY',
     anthropic: 'KOMMIT_ANTHROPIC_API_KEY',
     google: 'KOMMIT_GOOGLE_API_KEY',
