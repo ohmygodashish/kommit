@@ -127,8 +127,12 @@ export function parseMultiResponse(raw, allowedFiles = null) {
     throw Object.assign(new Error('LLM response missing commits array'), { raw, code: 'PARSE_ERROR' });
   }
 
-  const allowed = allowedFiles ? new Set(allowedFiles) : null;
-  const expectedFileCount = allowed ? allowed.size : null;
+  // A rename's identifier is the display string 'old -> new', which is not a path, so the
+  // model may answer with either real side. Accept every alias, resolve to one canonical id.
+  const aliases = allowedFiles instanceof Map
+    ? allowedFiles
+    : allowedFiles ? new Map(allowedFiles.map(file => [file, file])) : null;
+  const expectedFileCount = aliases ? new Set(aliases.values()).size : null;
   const seenFiles = new Set();
 
   const commits = parsed.commits.map(commit => {
@@ -140,18 +144,25 @@ export function parseMultiResponse(raw, allowedFiles = null) {
       throw Object.assign(new Error('LLM response includes an empty file entry'), { raw, code: 'PARSE_ERROR' });
     }
 
+    const files = [];
+
     for (const file of commit.files) {
-      if (allowed && !allowed.has(file)) {
+      const canonical = aliases ? aliases.get(file) : file;
+      if (canonical === undefined) {
         throw Object.assign(new Error(`LLM response referenced unknown file '${file}'`), { raw, code: 'PARSE_ERROR' });
       }
-      if (seenFiles.has(file)) {
+      if (files.includes(canonical)) {
+        continue;
+      }
+      if (seenFiles.has(canonical)) {
         throw Object.assign(new Error(`LLM response duplicated file '${file}' across commits`), { raw, code: 'PARSE_ERROR' });
       }
-      seenFiles.add(file);
+      seenFiles.add(canonical);
+      files.push(canonical);
     }
 
     return {
-      files: commit.files,
+      files,
       subject: commit.subject,
       body: commit.body
     };

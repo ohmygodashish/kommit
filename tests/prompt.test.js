@@ -144,6 +144,50 @@ describe('prompt.js', () => {
       assert.throws(() => parseMultiResponse(raw, ['src/index.js']), { code: 'PARSE_ERROR' });
     });
 
+    it('accepts a rename referenced by either real path, not just the display string', () => {
+      const displayPath = 'src/clipboard.js -> src/clipboard.ts';
+      const aliases = new Map([
+        [displayPath, displayPath],
+        ['src/clipboard.ts', displayPath],
+        ['src/clipboard.js', displayPath]
+      ]);
+      const raw = JSON.stringify({
+        commits: [
+          { files: ['src/clipboard.js'], subject: 'refactor: port clipboard', body: '' }
+        ]
+      });
+
+      const result = parseMultiResponse(raw, aliases);
+      assert.deepStrictEqual(result[0].files, [displayPath]);
+    });
+
+    it('collapses both sides of a rename named in the same commit', () => {
+      const displayPath = 'src/clipboard.js -> src/clipboard.ts';
+      const aliases = new Map([
+        [displayPath, displayPath],
+        ['src/clipboard.ts', displayPath],
+        ['src/clipboard.js', displayPath]
+      ]);
+      const raw = JSON.stringify({
+        commits: [
+          { files: ['src/clipboard.js', 'src/clipboard.ts'], subject: 'refactor: port clipboard', body: '' }
+        ]
+      });
+
+      const result = parseMultiResponse(raw, aliases);
+      assert.deepStrictEqual(result[0].files, [displayPath]);
+    });
+
+    it('still rejects a file that is not in the change set', () => {
+      const raw = JSON.stringify({
+        commits: [
+          { files: ['src/nope.js'], subject: 'feat: x', body: '' }
+        ]
+      });
+
+      assert.throws(() => parseMultiResponse(raw, new Map([['a.js', 'a.js']])), { code: 'PARSE_ERROR' });
+    });
+
     it('throws when a changed file is missing from the plan', () => {
       const raw = JSON.stringify({
         commits: [
