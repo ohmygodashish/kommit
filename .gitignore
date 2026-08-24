@@ -140,3 +140,4 @@ vite.config.ts.timestamp-*
 
 # Agent directory
 .agents/
+.claude/
