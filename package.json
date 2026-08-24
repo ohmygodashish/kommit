@@ -1,15 +1,14 @@
 {
   "name": "kommit-cli",
-  "version": "0.4.1",
+  "version": "1.0.0",
   "description": "AI powered Conventional Commit message generator",
   "type": "module",
-  "main": "./src/index.js",
+  "main": "./dist/index.js",
   "bin": {
-    "kommit": "bin/kommit"
+    "kommit": "./dist/cli.js"
   },
   "files": [
-    "bin/",
-    "src/",
+    "dist/",
     "README.md",
     "LICENSE"
   ],
@@ -38,9 +37,16 @@
   },
   "homepage": "https://github.com/ohmygodashish/kommit#readme",
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.*",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.3"
   }
 }
