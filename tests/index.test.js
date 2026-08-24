@@ -7,13 +7,15 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 
 import {
+  buildFileAliases,
   buildFullMessage,
   getVariationHint,
   commitMessage,
   executeMultiCommits,
   setExitForTesting
 } from '../src/index.js';
-import { unstageAll } from '../src/git.js';
+import { unstageAll, getAllChanges } from '../src/git.js';
+import { parseMultiResponse } from '../src/prompt.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -183,5 +185,110 @@ describe('index.js helpers', () => {
         err => err.message.includes('Unknown file in commit plan')
       );
     });
+  });
+});
+
+describe('buildFileAliases', () => {
+  it('maps the display path, the new path, and both rename sides to one canonical id', () => {
+    const file = {
+      status: 'R ',
+      changeType: 'R',
+      path: 'src/clipboard.ts',
+      displayPath: 'src/clipboard.js -> src/clipboard.ts',
+      stagePaths: ['src/clipboard.js', 'src/clipboard.ts']
+    };
+
+    const aliases = buildFileAliases([file]);
+    assert.strictEqual(aliases.get('src/clipboard.js -> src/clipboard.ts'), file.displayPath);
+    assert.strictEqual(aliases.get('src/clipboard.js'), file.displayPath);
+    assert.strictEqual(aliases.get('src/clipboard.ts'), file.displayPath);
+  });
+
+  it('never lets a rename side shadow another entry that owns that exact path', () => {
+    const renamed = {
+      status: 'R ',
+      changeType: 'R',
+      path: 'b.js',
+      displayPath: 'a.js -> b.js',
+      stagePaths: ['a.js', 'b.js']
+    };
+    const added = {
+      status: '??',
+      changeType: 'A',
+      path: 'a.js',
+      displayPath: 'a.js',
+      stagePaths: ['a.js']
+    };
+
+    const aliases = buildFileAliases([renamed, added]);
+    assert.strictEqual(aliases.get('a.js'), 'a.js');
+    assert.strictEqual(aliases.get('b.js'), 'a.js -> b.js');
+    assert.strictEqual(aliases.get('a.js -> b.js'), 'a.js -> b.js');
+  });
+});
+
+// Regression: a rename is identified to the model as 'old -> new', which is not a path.
+// The model answers with a real path from one side, so the whole pipeline has to agree
+// on one canonical id: getAllChanges -> buildFileAliases -> parseMultiResponse -> commit.
+describe('multi-commit pipeline with a renamed file', () => {
+  let repoDir;
+  let originalCwd;
+
+  async function execGit(args, cwd = repoDir) {
+    return execFileAsync('git', args, { cwd, encoding: 'utf8' });
+  }
+
+  before(async () => {
+    originalCwd = process.cwd();
+    repoDir = await mkdtemp(join(tmpdir(), 'kommit-rename-pipeline-'));
+    await execGit(['init']);
+    await execGit(['config', 'user.email', 'test@test.com']);
+    await execGit(['config', 'user.name', 'Test']);
+
+    await writeFile(join(repoDir, 'old.txt'), 'line one\nline two\nline three\n');
+    await execGit(['add', 'old.txt']);
+    await execGit(['commit', '-m', 'baseline']);
+
+    process.chdir(repoDir);
+    await rename(join(repoDir, 'old.txt'), join(repoDir, 'new.txt'));
+  });
+
+  after(async () => {
+    process.chdir(originalCwd);
+    await rm(repoDir, { recursive: true, force: true });
+  });
+
+  it('commits a rename the model referenced by its old path', async () => {
+    const changeResult = await getAllChanges({ maxDiffLength: 12000 });
+
+    const renameEntry = changeResult.files.find(file => file.changeType === 'R');
+    assert.ok(renameEntry, 'expected git to detect the rename');
+    assert.strictEqual(renameEntry.displayPath, 'old.txt -> new.txt');
+
+    const aliases = buildFileAliases(changeResult.files);
+    const changeMap = new Map(changeResult.files.map(file => [file.displayPath, file]));
+
+    // The model answers with the old path, exactly as it does in practice, because the
+    // diff it reads says 'rename from old.txt'.
+    const raw = JSON.stringify({
+      commits: [
+        { files: ['old.txt'], subject: 'refactor: rename old to new', body: '' }
+      ]
+    });
+
+    const commits = parseMultiResponse(raw, aliases);
+    assert.deepStrictEqual(commits[0].files, ['old.txt -> new.txt']);
+
+    await executeMultiCommits(commits, changeMap);
+
+    const { stdout: subject } = await execGit(['log', '-1', '--format=%s']);
+    assert.strictEqual(subject.trim(), 'refactor: rename old to new');
+
+    // The commit must actually record the rename, not an unrelated add/delete pair.
+    const { stdout: nameStatus } = await execGit(['show', '--name-status', '--format=', '-M', 'HEAD']);
+    assert.match(nameStatus, /^R\d*\s+old\.txt\s+new\.txt$/m);
+
+    const { stdout: remaining } = await execGit(['status', '--porcelain']);
+    assert.strictEqual(remaining.trim(), '', 'expected no leftover changes');
   });
 });
