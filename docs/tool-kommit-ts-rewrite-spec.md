@@ -337,13 +337,28 @@ export async function buildMultiCommitPrompt(
 export function parseResponse(raw: string): CommitMessage
 // throws: code 'PARSE_ERROR', carries the raw output
 
-export function parseMultiResponse(raw: string, allowedFiles?: string[] | null): CommitPlan[]
+/**
+ * allowedFiles accepts either a flat list of canonical identifiers, or an
+ * alias -> canonical map from buildFileAliases(). Every referenced file is
+ * resolved through it, so the returned plans always carry canonical ids.
+ */
+export function parseMultiResponse(
+  raw: string,
+  allowedFiles?: string[] | Map<string, string> | null
+): CommitPlan[]
 // throws: code 'PARSE_ERROR', carries the raw output
 
 export function validateSubject(subject: string): boolean
 ```
 
 `JSON.parse` returns `any`, so the runtime shape checks in both parsers are unchanged. Types do not replace them: the LLM response is untrusted input and validation stays a runtime concern.
+
+The `Map` form of `allowedFiles` exists because a rename is identified to the model as
+the display string `old -> new`, which is not a path, so the model answers with a real
+path from one side or the other. `parseMultiResponse` canonicalises before validating,
+collapses aliases of the same file named twice within one commit group, and still
+rejects the same file appearing in two different commits. The `string[]` form is
+retained as identity aliasing, which is what every existing test passes.
 
 ### `src/ui.ts`
 ```ts
@@ -446,6 +461,14 @@ export async function generateWithFallback<T>(options: GenerateOptions<T>): Prom
 export function buildFullMessage(message: CommitMessage): string
 export function getVariationHint(count: number): string
 export async function commitMessage(message: CommitMessage): Promise<{ hash: string }>
+/**
+ * Maps a file's displayPath, path, and both stagePaths to one canonical displayPath,
+ * so a rename can be referenced by either real path. An entry's own displayPath always
+ * wins, and genuinely ambiguous aliases are dropped rather than guessed, so no alias
+ * can shadow a real file and cause the wrong file to be staged.
+ */
+export function buildFileAliases(files: FileChange[]): Map<string, string>
+
 export async function executeMultiCommits(
   commits: CommitPlan[],
   changeMap: Map<string, FileChange>
