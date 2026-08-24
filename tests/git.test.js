@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import { getDiff, getAllChanges, stageTracked, stageFiles, unstageAll, commit, getRepoRoot, getLastCommits, isMergeCommit, isCommitPushed, undoCommits } from '../src/git.js';
-import { mkdtemp, writeFile, rm, mkdir, rename } from 'fs/promises';
+import { mkdtemp, writeFile, rm, mkdir, rename, realpath } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFile } from 'child_process';
@@ -19,7 +19,9 @@ describe('git.js', () => {
 
   before(async () => {
     originalCwd = process.cwd();
-    repoDir = await mkdtemp(join(tmpdir(), 'kommit-git-test-'));
+    // realpath: on macOS tmpdir() is /var/... which symlinks to /private/var/..., and
+    // git rev-parse --show-toplevel always reports the resolved path.
+    repoDir = await realpath(await mkdtemp(join(tmpdir(), 'kommit-git-test-')));
     await execGit(['init']);
     await execGit(['config', 'user.email', 'test@test.com']);
     await execGit(['config', 'user.name', 'Test']);
