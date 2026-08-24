@@ -299,6 +299,32 @@ export async function runSingleCommitFlow({ flags, config, auth, provider, provi
   }
 }
 
+// Renames are identified to the model as 'old -> new', which is not a path, so accept the
+// real paths too. An entry's own displayPath always wins, so no alias shadows a real file.
+export function buildFileAliases(files) {
+  const canonical = new Set(files.map(file => file.displayPath));
+  const aliases = new Map(files.map(file => [file.displayPath, file.displayPath]));
+  const conflicts = new Set();
+
+  for (const file of files) {
+    for (const alias of [file.path, ...file.stagePaths]) {
+      if (canonical.has(alias)) continue;
+      const existing = aliases.get(alias);
+      if (existing === undefined) {
+        aliases.set(alias, file.displayPath);
+      } else if (existing !== file.displayPath) {
+        conflicts.add(alias);
+      }
+    }
+  }
+
+  for (const alias of conflicts) {
+    aliases.delete(alias);
+  }
+
+  return aliases;
+}
+
 export async function executeMultiCommits(commits, changeMap) {
   await unstageAll();
 
@@ -345,7 +371,7 @@ export async function runMultiCommitFlow({ flags, config, auth, provider, provid
     printVerbose('USER PROMPT', userPrompt);
   }
 
-  const allowedFiles = changeResult.files.map(file => file.displayPath);
+  const allowedFiles = buildFileAliases(changeResult.files);
   const changeMap = new Map(changeResult.files.map(file => [file.displayPath, file]));
   const originalProvider = provider;
   const originalProviderConfig = providerConfig;
