@@ -55,7 +55,7 @@ Source is TypeScript. There is **no build step for development, testing, or CI**
 | CI | `npm run typecheck` + `npm test` | No |
 | Published package | `dist/cli.js` | Yes (`prepublishOnly`) |
 
-The published package ships compiled JavaScript rather than TypeScript. npm does not enforce the `engines` field by default, so publishing raw `.ts` would turn an install on Node < 22.18 into a startup syntax error rather than a clear version warning.
+The published package ships compiled JavaScript rather than TypeScript. This is not a preference, and not a concession to old Node versions — **Node refuses to strip types from any file under `node_modules`, on every version and behind every flag.** See [Why the published package cannot be TypeScript](#why-the-published-package-cannot-be-typescript).
 
 ### `tsconfig.json`
 ```json
@@ -107,7 +107,7 @@ kommit/
 │   ├── tool-kommit-spec.md            # Authoritative behavior specification
 │   └── tool-kommit-ts-rewrite-spec.md # This file
 ├── tests/
-│   └── *.test.ts           # Same 11 files, renamed from .test.js
+│   └── *.test.ts           # The 11 renamed files, plus config-wizard.test.ts
 ├── dist/                   # tsc output; gitignored, generated at build/publish time
 ├── tsconfig.json
 ├── package.json
@@ -258,9 +258,36 @@ export function getAvailableProviders(
   auth: Auth,
   env?: NodeJS.ProcessEnv
 ): string[]
+
+/** Test seam for the wizards. Pass null to restore the real @clack functions and process.exit. */
+export function setPromptsForTesting(overrides: PromptOverrides | null): void
+
+interface PromptOverrides {
+  intro?: (title?: string) => void;
+  outro?: (message?: string) => void;
+  select?: <Value>(opts: SelectOptions<Value>) => Promise<Value | symbol>;
+  confirm?: (opts: ConfirmOptions) => Promise<boolean | symbol>;
+  password?: (opts: PasswordOptions) => Promise<string | symbol>;
+  text?: (opts: TextOptions) => Promise<string | symbol>;
+  isCancel?: (value: unknown) => value is symbol;
+  exit?: (code: number) => never;
+}
 ```
 
 `MIGRATION_NOTES` and `PROVIDER_LABELS` are declared `Record<number, string>` and `Record<string, string>` so their dynamic lookups typecheck.
+
+`runInitWizard` and `runSetWizard` route **every** `@clack` call and every exit through `setPromptsForTesting`, which is what makes them testable — before it they called `prompts.*` and `process.exit` directly and had no coverage at all. A single options object is used rather than `ui.ts`'s positional arguments because eight nullable positional parameters would be unreadable.
+
+`intro` and `outro` are purely decorative but **must** be included, which was found the hard way. They write raw ANSI cursor sequences to `process.stdout`, and `node --test` uses that same stream for its serialized IPC with each test child. Left unstubbed they corrupt the framing, and the file dies with:
+
+```
+Error: Unable to deserialize cloned data due to invalid or unsupported version.
+    at #processRawBuffer (node:internal/test_runner/runner:410:20)
+```
+
+The failure is load-dependent, so it presents as a flake rather than a clean error: with them unstubbed the full suite failed 5 runs out of 8, with a different test count each time; with them stubbed, 10 out of 10 clean. `tests/config-wizard.test.ts` funnels every case through one `overrides()` helper that always supplies them, so no future test can reintroduce it.
+
+`exit` is typed `(code: number) => never`, so a test stub **must throw**. That mirrors what `process.exit` does to control flow and makes it impossible for a test to run past an exit and assert against state the real CLI would never have reached.
 
 ### `src/git.ts`
 ```ts
@@ -294,11 +321,13 @@ export async function undoCommits(count: number): Promise<UndoResult>
 // throws: code 'undo_failed'
 ```
 
-The internal `withTemporaryIndex` helper is generic over its callback's result:
+The internal `withTemporaryIndex` helper is generic over its callback's result. The options shape is a named alias, shared with `execGit`'s parameter rather than written inline twice:
 ```ts
-function withTemporaryIndex<T>(
-  callback: (options: { env: NodeJS.ProcessEnv }) => Promise<T>
-): Promise<T>
+interface GitOptions {
+  env?: NodeJS.ProcessEnv;
+}
+
+function withTemporaryIndex<T>(callback: (options: GitOptions) => Promise<T>): Promise<T>
 ```
 
 ### `src/llm.ts`
@@ -476,9 +505,33 @@ export async function executeMultiCommits(
 
 export async function main(): Promise<void>
 
-/** Test seam: pass null to restore the real process.exit. */
-export function setExitForTesting(fn: ((code: number) => void) | null): void
+/** Test seam: pass null to restore the real process.exit. An override must throw. */
+export function setExitForTesting(fn: ((code: number) => never) | null): void
+
+/** Shared by runSingleCommitFlow, runMultiCommitFlow and runUndoFlow. */
+interface FlowOptions {
+  flags: Flags;
+  config: Config;
+  auth: Auth;
+  provider: string;
+  providerConfig: ProviderConfig;
+  apiKey: string;
+}
 ```
+
+The flow functions are written on the assumption that `_exit()` terminates: they read values assigned inside a `try` whose `catch` exits, and treat `if (!plan) _exit(1)` as a narrowing. `process.exit` is already typed `never`, so the whole seam is typed `never` and no cast is needed:
+
+```ts
+let _exitFn: (code: number) => never = (code: number) => process.exit(code);
+
+export function setExitForTesting(fn: ((code: number) => never) | null): void {
+  _exitFn = fn || ((code: number) => process.exit(code));
+}
+```
+
+A test override must therefore **throw**, matching what `process.exit` does to control flow. A non-throwing stub would let a test run past an exit and assert against a state the real CLI can never reach — sometimes crashing on an unassigned value, but sometimes passing while asserting a fiction, which is worse. `tests/config-wizard.test.ts` shows the pattern with its `ExitSignal` class.
+
+**Enforcement caveat.** `npm run typecheck` will *not* catch a non-throwing stub, because `tsconfig.json` includes `src/**/*.ts` only — tests are deliberately excluded so they never land in `dist/`. The constraint is enforced by editors (the TypeScript language server checks the open file) and by any `tsc` run that includes `tests/`; it is not enforced in CI. Adding tests to a typecheck-only project would close that gap, but they are written in an untyped JavaScript style and currently produce ~308 errors, mostly implicit `any`. That is its own piece of work, not a precondition for this seam.
 
 ### `src/cli.ts`
 ```ts
@@ -528,6 +581,29 @@ main().catch((err: NodeError) => {
 - `"build"` exists as a standalone script, not only inside `prepublishOnly`, because `npm link` needs `dist/` to exist before the linked `kommit` binary resolves.
 - `dist/` is gitignored. It is a generated artifact and is never committed.
 
+### Why the published package cannot be TypeScript
+
+Shipping `src/*.ts` and dropping `tsc` entirely was tried and **does not work**. Node declines to strip types for any file resolved under `node_modules`:
+
+```
+Error [ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING]: Stripping types is currently
+unsupported for files under node_modules, for ".../node_modules/kommit-cli/src/cli.ts"
+```
+
+Measured on Node 24 with `bin` pointed at `./src/cli.ts` and `files: ["src/"]`:
+
+| Scenario | Result |
+|---|---|
+| `npm pack` | clean tarball, `src/*.ts` only |
+| `npm install -g <tarball>` | **exits 0** — the failure is silent |
+| running the installed `kommit` | `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` |
+| `--experimental-strip-types` / `--experimental-transform-types` | same error |
+| the identical file copied outside `node_modules` | runs fine |
+
+It is a path-based restriction, deliberate on Node's part: a package author may not push transpilation cost onto every consumer. No Node version or flag lifts it.
+
+**`npm link` does not reproduce this.** The link is a symlink pointing out of `node_modules` to the working copy, so the resolved path never contains `node_modules` and the linked binary works perfectly. Linking would keep passing indefinitely while every published install was broken — which is why CI installs a packed tarball rather than linking. See [Build verification](#build-verification).
+
 ### Dependencies
 - **Runtime**: unchanged. `@clack/prompts` only, which ships its own `index.d.mts`, so no `@types` package is needed for it.
 - **Dev**: `typescript` (^5.9, required at 5.7+ for `rewriteRelativeImportExtensions`) and `@types/node` (^24). Neither is needed to run the published package.
@@ -548,7 +624,9 @@ npm run build && npm link  # Build first: the linked binary resolves to dist/cli
 `npm run typecheck` (`tsc --noEmit`) covers every file under `src/`, including `src/cli.ts`. In CI it replaces the `node --check bin/kommit` step, which existed only because that entry point was never imported by a test.
 
 ### Unit tests
-Test files are renamed to `.ts` and run directly under Node's type stripping. Assertions are unchanged from the JavaScript suite; the migration is a rename plus import-specifier updates. Test coverage per module is unchanged from the main specification.
+Test files are renamed to `.ts` and run directly under Node's type stripping. Assertions are unchanged from the JavaScript suite; the migration is a rename plus import-specifier updates.
+
+Coverage gained one file the JavaScript suite never had. `tests/config-wizard.test.ts` covers `runInitWizard` and `runSetWizard`, which previously called `prompts.*` and `process.exit` directly and so had no tests at all — the gap that let the unreachable branch in [Unreachable branch removed from `runSetWizard`](#unreachable-branch-removed-from-runsetwizard) survive unnoticed. Coverage of every other module is unchanged from the main specification.
 
 Types are not a substitute for the suite. Its value is concentrated in runtime behavior the compiler cannot see: real git repositories in temp dirs, malformed LLM output, and missing clipboard binaries.
 
@@ -556,7 +634,8 @@ Types are not a substitute for the suite. Its value is concentrated in runtime b
 The published path needs its own check, since no unit test exercises `tsc` output:
 - `npm run build && node dist/cli.js --help` and `--version`, confirming `rewriteRelativeImportExtensions` emitted resolvable specifiers
 - `npm pack --dry-run`, confirming the tarball contains `dist/` and no longer references `bin/`
-- Install from a packed tarball and confirm `dist/cli.js` has the executable bit set
+
+CI carries this as a dedicated `package` job, which builds, packs, installs the tarball globally, and runs the installed binary. It must **install the tarball**, never `npm link` — for the reason in [Why the published package cannot be TypeScript](#why-the-published-package-cannot-be-typescript), a link resolves out of `node_modules` and would pass even when the published package is completely broken. `npm pack` does not run `prepublishOnly`, so the job builds explicitly.
 
 ---
 
@@ -570,6 +649,19 @@ The published path needs its own check, since no unit test exercises `tsc` outpu
 ```
 
 `err.code` on an `execFile` rejection is the process exit code, so `exitCode` was correct only by accident and `code` was inconsistent with the rest of the codebase. After the rewrite the numeric exit code populates `exitCode` only when it is actually a number, and `code` is consistently a string tag. User-visible behavior is unchanged: `kommit` still exits with git's exit code when a commit fails.
+
+### Unreachable branch removed from `runSetWizard`
+
+Typing `config.providers` as `Record<string, ProviderConfig>` surfaced a guard that could never fire:
+
+```js
+// before
+if (!config.providers[selectedProvider]) {
+  config.providers[selectedProvider] = {};   // missing every ProviderConfig field
+}
+```
+
+`selectedProvider` is chosen from `availableProviders`, which is built by iterating `Object.keys(config.providers)` — and when that list is empty the function has already exited. The key therefore always exists. Had the branch ever run it would have built a provider with no `endpoint`, surfacing later inside `generateMessage` as an unrelated-looking error. Casting to `ProviderConfig` would have asserted a shape the branch demonstrably does not build, so the branch was deleted instead. Unreachable code has no behavior, so nothing user-visible changed.
 
 ---
 
