@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm, mkdir, access, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { loadConfig, saveConfig, saveAuth } from '../src/config.js';
+import { loadConfig, saveConfig, saveAuth } from '../src/config.ts';
 
 describe('config.js I/O', () => {
   let baseConfigDir;

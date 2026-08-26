@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { resolveProvider, resolveSkill, migrateConfig, getAvailableProviders } from '../src/config.js';
+import { resolveProvider, resolveSkill, migrateConfig, getAvailableProviders } from '../src/config.ts';
 
-describe('config.js', () => {
+describe('config.ts', () => {
   describe('resolveProvider', () => {
     const config = {
       defaultProvider: 'openrouter',
