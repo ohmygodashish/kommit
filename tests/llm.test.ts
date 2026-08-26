@@ -1,8 +1,8 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { isRetryable, generateMessage, LLMError } from '../src/llm.js';
+import { isRetryable, generateMessage, LLMError } from '../src/llm.ts';
 
-describe('llm.js', () => {
+describe('llm.ts', () => {
   describe('isRetryable', () => {
     it('returns true for timeout', () => {
       assert.strictEqual(isRetryable(new LLMError('timeout', 'timeout')), true);
