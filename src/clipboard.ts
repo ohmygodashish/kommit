@@ -1,9 +1,14 @@
 import { spawn as _spawn } from 'child_process';
 
-let _spawnOverride: typeof _spawn | null = null;
+type SpawnFn = typeof _spawn;
 
-export function setSpawnForTesting(spawnFn: typeof _spawn | null): void {
-  _spawnOverride = spawnFn;
+let _spawnOverride: SpawnFn | null = null;
+
+// The internal type stays exact so `child` below is a real ChildProcess and its event
+// callbacks keep their types; only the public setter is loose, since a test double is a
+// stub rather than a genuine ChildProcess factory.
+export function setSpawnForTesting(spawnFn: ((...args: Parameters<SpawnFn>) => any) | null): void {
+  _spawnOverride = spawnFn as SpawnFn | null;
 }
 
 function spawnClipboard(cmd: string, args: string[], text: string): Promise<void> {

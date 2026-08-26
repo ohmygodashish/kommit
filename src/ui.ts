@@ -8,11 +8,13 @@ export type ErrorAction = 'retry' | 'switch' | 'cancel';
 export type UndoAction = 'regenerate' | 'edit' | 'cancel';
 
 // Every call routes through an override wrapper for testability, which would drop @clack's
-// `T | symbol` narrowing. Generic pass-throughs plus a predicate _isCancel keep it.
-type SelectFn = <Value>(opts: SelectOptions<Value>) => Promise<Value | symbol>;
-type IsCancelFn = (value: unknown) => value is symbol;
-type MultiselectFn = <Value>(opts: MultiSelectOptions<Value>) => Promise<Value[] | symbol>;
-type TextFn = (opts: TextOptions) => Promise<string | symbol>;
+// `T | symbol` narrowing. The generic pass-throughs below plus the _isCancel predicate keep
+// it: the narrowing comes from _select/_multiselect/_text's own signatures, so the override
+// types stay loose enough for a test double to be an ordinary stub.
+type SelectFn = (opts: any) => any;
+type IsCancelFn = (value: unknown) => boolean;
+type MultiselectFn = (opts: any) => any;
+type TextFn = (opts: any) => any;
 
 let _selectOverride: SelectFn | null = null;
 let _isCancelOverride: IsCancelFn | null = null;
@@ -20,10 +22,10 @@ let _multiselectOverride: MultiselectFn | null = null;
 let _textOverride: TextFn | null = null;
 
 export function setSelectForTesting(
-  selectFn: SelectFn | null,
-  isCancelFn: IsCancelFn | null,
-  multiselectFn: MultiselectFn | null,
-  textFn: TextFn | null
+  selectFn?: SelectFn | null,
+  isCancelFn?: IsCancelFn | null,
+  multiselectFn?: MultiselectFn | null,
+  textFn?: TextFn | null
 ): void {
   _selectOverride = selectFn || null;
   _isCancelOverride = isCancelFn || null;

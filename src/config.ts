@@ -160,16 +160,19 @@ function buildMigrationWarning(fromVersion: number, toVersion: number): string |
   return `Config migrated v${fromVersion}→v${toVersion}. ${notes.join(' ')} Run 'kommit --set' to switch.`;
 }
 
-export function migrateConfig(config: Config): { config: Config; migrated: boolean; warning: string | null } {
+// Takes whatever was on disk, which for an older schema version is missing fields by
+// definition, and returns a complete Config.
+export function migrateConfig(input: Partial<Config>): { config: Config; migrated: boolean; warning: string | null } {
   let migrated = false;
-  const fromVersion = config.version || 0;
+  const fromVersion = input.version || 0;
+  let config = input as Config;
 
   if (fromVersion < CURRENT_CONFIG_VERSION) {
     const defaults = getDefaultConfig();
-    const oldProviders = config.providers || {};
+    const oldProviders = input.providers || {};
     config = {
       ...defaults,
-      ...config,
+      ...input,
       version: CURRENT_CONFIG_VERSION,
       providers: { ...defaults.providers, ...oldProviders }
     };
