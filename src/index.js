@@ -4,7 +4,7 @@ import { join } from 'path';
 import process from 'process';
 
 import { loadConfig, runInitWizard, runSetWizard, resolveProvider, resolveSkill, getAvailableProviders } from './config.js';
-import { getDiff, getAllChanges, commit, stageTracked, stageFiles, unstageAll, getRepoRoot, getLastCommits, isMergeCommit, isCommitPushed, undoCommits } from './git.js';
+import { getDiff, getAllChanges, commit, stageTracked, stageFiles, unstageAll, getRepoRoot, getLastCommits, isMergeCommit, isCommitPushed, undoCommits } from './git.ts';
 import { generateMessage, isRetryable } from './llm.ts';
 import { buildPrompt, buildMultiCommitPrompt, parseResponse, parseMultiResponse, validateSubject } from './prompt.ts';
 import { promptAction, editMessage, promptError, promptSelectProvider, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, withSpinner, promptUndoConfirmation, promptUndoAction } from './ui.js';

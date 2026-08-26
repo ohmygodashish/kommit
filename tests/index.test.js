@@ -14,7 +14,7 @@ import {
   executeMultiCommits,
   setExitForTesting
 } from '../src/index.js';
-import { unstageAll, getAllChanges } from '../src/git.js';
+import { unstageAll, getAllChanges } from '../src/git.ts';
 import { parseMultiResponse } from '../src/prompt.ts';
 
 const execFileAsync = promisify(execFile);
