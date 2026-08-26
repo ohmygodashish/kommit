@@ -109,7 +109,8 @@ kommit/
 ├── tests/
 │   └── *.test.ts           # The 11 renamed files, plus config-wizard.test.ts
 ├── dist/                   # tsc output; gitignored, generated at build/publish time
-├── tsconfig.json
+├── tsconfig.json           # typecheck project: src + tests, no emit
+├── tsconfig.build.json     # build project: src only, emits dist/
 ├── package.json
 └── README.md
 ```
@@ -233,8 +234,9 @@ export async function loadConfig(): Promise<{ config: Config; auth: Auth }>
 export async function saveConfig(config: Config): Promise<void>
 export async function saveAuth(auth: Auth): Promise<void>
 
+/** Takes whatever was on disk — for an older schema version that means missing fields. */
 export function migrateConfig(
-  config: Config
+  input: Partial<Config>
 ): { config: Config; migrated: boolean; warning: string | null }
 
 export async function runInitWizard(): Promise<void>
@@ -429,12 +431,12 @@ export async function promptUndoConfirmation(
 
 export async function promptUndoAction(count: number): Promise<UndoAction>
 
-/** Test seam: pass null for any argument to restore the real @clack function. */
+/** Test seam: omit or pass null for any argument to restore the real @clack function. */
 export function setSelectForTesting(
-  selectFn: SelectFn | null,
-  isCancelFn: IsCancelFn | null,
-  multiselectFn: MultiselectFn | null,
-  textFn: TextFn | null
+  selectFn?: SelectFn | null,
+  isCancelFn?: IsCancelFn | null,
+  multiselectFn?: MultiselectFn | null,
+  textFn?: TextFn | null
 ): void
 ```
 
@@ -531,7 +533,7 @@ export function setExitForTesting(fn: ((code: number) => never) | null): void {
 
 A test override must therefore **throw**, matching what `process.exit` does to control flow. A non-throwing stub would let a test run past an exit and assert against a state the real CLI can never reach — sometimes crashing on an unassigned value, but sometimes passing while asserting a fiction, which is worse. `tests/config-wizard.test.ts` shows the pattern with its `ExitSignal` class.
 
-**Enforcement caveat.** `npm run typecheck` will *not* catch a non-throwing stub, because `tsconfig.json` includes `src/**/*.ts` only — tests are deliberately excluded so they never land in `dist/`. The constraint is enforced by editors (the TypeScript language server checks the open file) and by any `tsc` run that includes `tests/`; it is not enforced in CI. Adding tests to a typecheck-only project would close that gap, but they are written in an untyped JavaScript style and currently produce ~308 errors, mostly implicit `any`. That is its own piece of work, not a precondition for this seam.
+`npm run typecheck` enforces this, since [the test files are typechecked too](#type-checking).
 
 ### `src/cli.ts`
 ```ts
@@ -621,7 +623,26 @@ npm run build && npm link  # Build first: the linked binary resolves to dist/cli
 ## Testing & Type Checking
 
 ### Type checking
-`npm run typecheck` (`tsc --noEmit`) covers every file under `src/`, including `src/cli.ts`. In CI it replaces the `node --check bin/kommit` step, which existed only because that entry point was never imported by a test.
+`npm run typecheck` (`tsc`) covers **`src/` and `tests/` both**. In CI it replaces the `node --check bin/kommit` step, which existed only because that entry point was never imported by a test.
+
+Two projects, because emit and checking want different file sets:
+
+| File | Purpose | `include` | Emits |
+|---|---|---|---|
+| `tsconfig.json` | typecheck, and what editors load | `src/**/*.ts`, `tests/**/*.ts` | no (`noEmit`) |
+| `tsconfig.build.json` | `npm run build` | `src/**/*.ts` | `dist/` |
+
+Tests must never land in `dist/`, which is why the build project narrows `include`. Checking them is what catches misuse of a module's own API — wrong argument counts, incomplete shapes, a test seam stubbed the wrong way — none of which the runtime suite notices, because a JavaScript-style test happily passes a half-built object that production code would never receive.
+
+Enabling it surfaced 308 errors. Most were annotations, but three were real and are fixed in `src/`:
+
+| Finding | Fix |
+|---|---|
+| `setSelectForTesting` required all 4 arguments; 34 call sites passed 1 or 2 | parameters made optional, matching actual use |
+| `migrateConfig(config: Config)` claimed a complete config, but its entire job is accepting an older, incomplete one | parameter widened to `Partial<Config>` |
+| Test-double types (`SelectFn`, `SpawnFn`) demanded real `@clack`/`ChildProcess` signatures a stub cannot satisfy | loosened at the seam only; the internal wrappers keep their exact types, so call-site narrowing is unaffected |
+
+`tests/fixtures.ts` provides builders (`providerConfig`, `config`, `flags`, `fileChange`, `commitPlan`, `providers`, …) so a test can still supply just the fields it cares about and get a complete, type-correct value. It holds no tests, so the runner's `*.test.ts` glob skips it while `tsconfig.json` still checks it.
 
 ### Unit tests
 Test files are renamed to `.ts` and run directly under Node's type stripping. Assertions are unchanged from the JavaScript suite; the migration is a rename plus import-specifier updates.

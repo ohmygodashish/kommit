@@ -37,8 +37,8 @@
   },
   "homepage": "https://github.com/ohmygodashish/kommit#readme",
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc",
     "test": "node --test tests/*.test.ts",
     "prepublishOnly": "npm run build"
   },
