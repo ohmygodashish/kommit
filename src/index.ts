@@ -15,10 +15,11 @@ import { copyToClipboard } from './clipboard.ts';
 
 let _exitFn: (code: number) => never = (code: number) => process.exit(code);
 
-export function setExitForTesting(fn: ((code: number) => void) | null): void {
-  // A test override really does return; production's process.exit does not. The cast keeps
-  // that one lie at the seam instead of spreading non-null assertions through every flow.
-  _exitFn = (fn || ((code: number) => process.exit(code))) as (code: number) => never;
+// The flows below are written on the assumption that _exit() ends control flow: they read
+// values assigned inside a try whose catch exits, and treat `if (!plan) _exit(1)` as a
+// narrowing. An override must therefore throw, which is what process.exit does in effect.
+export function setExitForTesting(fn: ((code: number) => never) | null): void {
+  _exitFn = fn || ((code: number) => process.exit(code));
 }
 
 function _exit(code: number): never {

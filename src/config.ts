@@ -2,7 +2,62 @@ import { homedir } from 'os';
 import { mkdir, readFile, writeFile, access } from 'fs/promises';
 import { join } from 'path';
 import * as prompts from '@clack/prompts';
+import type { ConfirmOptions, PasswordOptions, SelectOptions, TextOptions } from '@clack/prompts';
 import type { Auth, Config, Flags } from './types.ts';
+
+// Test seam for the wizards. Every @clack call and every exit routes through here, so a
+// test can drive a wizard end to end. `exit` is typed `never`: a stub must throw, which is
+// what production's process.exit does to control flow, so no test can run past an exit.
+interface PromptOverrides {
+  // intro/outro are decorative, but they write raw ANSI cursor sequences to stdout, which
+  // corrupts the node:test runner's serialized IPC on that same stream. They must be stubbable.
+  intro?: (title?: string) => void;
+  outro?: (message?: string) => void;
+  select?: <Value>(opts: SelectOptions<Value>) => Promise<Value | symbol>;
+  confirm?: (opts: ConfirmOptions) => Promise<boolean | symbol>;
+  password?: (opts: PasswordOptions) => Promise<string | symbol>;
+  text?: (opts: TextOptions) => Promise<string | symbol>;
+  isCancel?: (value: unknown) => value is symbol;
+  exit?: (code: number) => never;
+}
+
+let _overrides: PromptOverrides = {};
+
+export function setPromptsForTesting(overrides: PromptOverrides | null): void {
+  _overrides = overrides || {};
+}
+
+function _intro(title: string): void {
+  (_overrides.intro || prompts.intro)(title);
+}
+
+function _outro(message: string): void {
+  (_overrides.outro || prompts.outro)(message);
+}
+
+function _select<Value>(opts: SelectOptions<Value>): Promise<Value | symbol> {
+  return (_overrides.select || prompts.select)(opts);
+}
+
+function _confirm(opts: ConfirmOptions): Promise<boolean | symbol> {
+  return (_overrides.confirm || prompts.confirm)(opts);
+}
+
+function _password(opts: PasswordOptions): Promise<string | symbol> {
+  return (_overrides.password || prompts.password)(opts);
+}
+
+function _text(opts: TextOptions): Promise<string | symbol> {
+  return (_overrides.text || prompts.text)(opts);
+}
+
+function _isCancel(value: unknown): value is symbol {
+  return (_overrides.isCancel || prompts.isCancel)(value);
+}
+
+function _exit(code: number): never {
+  return (_overrides.exit || process.exit)(code);
+}
 
 const CURRENT_CONFIG_VERSION = 2;
 
@@ -179,9 +234,9 @@ export async function saveAuth(auth: Auth): Promise<void> {
 }
 
 export async function runInitWizard(): Promise<void> {
-  prompts.intro('Welcome to kommit!');
+  _intro('Welcome to kommit!');
 
-  const provider = await prompts.select({
+  const provider = await _select({
     message: 'Choose your default LLM provider:',
     options: [
       { value: 'openai', label: PROVIDER_LABELS.openai },
@@ -193,8 +248,8 @@ export async function runInitWizard(): Promise<void> {
     ]
   });
 
-  if (prompts.isCancel(provider)) {
-    process.exit(0);
+  if (_isCancel(provider)) {
+    _exit(0);
   }
 
   const needsKey = provider !== 'ollama' && provider !== 'lmstudio';
@@ -212,12 +267,12 @@ export async function runInitWizard(): Promise<void> {
 
     let key: string | undefined;
     if (envValue) {
-      const useEnv = await prompts.confirm({
+      const useEnv = await _confirm({
         message: `Found ${envVar} in environment. Use it?`,
         initialValue: true
       });
-      if (prompts.isCancel(useEnv)) {
-        process.exit(0);
+      if (_isCancel(useEnv)) {
+        _exit(0);
       }
       if (useEnv) {
         key = envValue;
@@ -225,11 +280,11 @@ export async function runInitWizard(): Promise<void> {
     }
 
     if (!key) {
-      const entered = await prompts.password({
+      const entered = await _password({
         message: `Enter your ${provider} API key:`
       });
-      if (prompts.isCancel(entered)) {
-        process.exit(0);
+      if (_isCancel(entered)) {
+        _exit(0);
       }
       key = entered;
     }
@@ -268,13 +323,13 @@ export async function runInitWizard(): Promise<void> {
     console.log('No API key needed for local providers.');
   }
 
-  prompts.outro('Setup complete! Run `kommit` to generate commit messages.');
+  _outro('Setup complete! Run `kommit` to generate commit messages.');
 }
 
 export async function runSetWizard(config: Config, auth: Auth): Promise<void> {
-  prompts.intro('Configure kommit');
+  _intro('Configure kommit');
 
-  const setting = await prompts.select({
+  const setting = await _select({
     message: 'What would you like to configure?',
     options: [
       { value: 'defaultProvider', label: 'Default provider' },
@@ -282,8 +337,8 @@ export async function runSetWizard(config: Config, auth: Auth): Promise<void> {
     ]
   });
 
-  if (prompts.isCancel(setting)) {
-    process.exit(0);
+  if (_isCancel(setting)) {
+    _exit(0);
   }
 
   if (setting === 'defaultProvider') {
@@ -300,7 +355,7 @@ export async function runSetWizard(config: Config, auth: Auth): Promise<void> {
 
     if (availableProviders.length === 0) {
       console.log('No providers available. Add API keys with `kommit --init`.');
-      process.exit(1);
+      _exit(1);
     }
 
     const providerOptions = availableProviders.map(name => ({
@@ -308,23 +363,23 @@ export async function runSetWizard(config: Config, auth: Auth): Promise<void> {
       label: PROVIDER_LABELS[name] || name
     }));
 
-    const selectedProvider = await prompts.select({
+    const selectedProvider = await _select({
       message: 'Choose your default provider:',
       options: providerOptions
     });
 
-    if (prompts.isCancel(selectedProvider)) {
-      process.exit(0);
+    if (_isCancel(selectedProvider)) {
+      _exit(0);
     }
 
     const currentModel = config.providers[selectedProvider]?.model || '';
-    const model = await prompts.text({
+    const model = await _text({
       message: 'Model name:',
       initialValue: currentModel
     });
 
-    if (prompts.isCancel(model)) {
-      process.exit(0);
+    if (_isCancel(model)) {
+      _exit(0);
     }
 
     config.defaultProvider = selectedProvider;
@@ -333,20 +388,20 @@ export async function runSetWizard(config: Config, auth: Auth): Promise<void> {
 
   if (setting === 'skillName') {
     const currentSkill = config.skillName || '';
-    const skill = await prompts.text({
+    const skill = await _text({
       message: 'Skill name (leave empty to clear):',
       initialValue: currentSkill
     });
 
-    if (prompts.isCancel(skill)) {
-      process.exit(0);
+    if (_isCancel(skill)) {
+      _exit(0);
     }
 
     config.skillName = skill.trim() || null;
   }
 
   await saveConfig(config);
-  prompts.outro('Configuration updated!');
+  _outro('Configuration updated!');
 }
 
 export function resolveProvider(config: Config, flags: Flags, env: NodeJS.ProcessEnv, auth: Auth = {}): string | null {
