@@ -2,14 +2,15 @@ import { homedir } from 'os';
 import { mkdir, readFile, writeFile, access } from 'fs/promises';
 import { join } from 'path';
 import * as prompts from '@clack/prompts';
+import type { Auth, Config, Flags } from './types.ts';
 
 const CURRENT_CONFIG_VERSION = 2;
 
-const MIGRATION_NOTES = {
+const MIGRATION_NOTES: Record<number, string> = {
   2: "Google default model is now 'gemini-3.1-flash-lite' (replaces the -lite-preview)."
 };
 
-const PROVIDER_LABELS = {
+const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   google: 'Google',
@@ -38,7 +39,7 @@ function getAuthPath() {
   return join(getDataDir(), 'auth.json');
 }
 
-function getDefaultConfig() {
+function getDefaultConfig(): Config {
   return {
     version: CURRENT_CONFIG_VERSION,
     defaultProvider: 'openrouter',
@@ -84,7 +85,7 @@ function getDefaultConfig() {
   };
 }
 
-async function fileExists(path) {
+async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
@@ -93,8 +94,8 @@ async function fileExists(path) {
   }
 }
 
-function buildMigrationWarning(fromVersion, toVersion) {
-  const notes = [];
+function buildMigrationWarning(fromVersion: number, toVersion: number): string | null {
+  const notes: string[] = [];
   for (let v = fromVersion + 1; v <= toVersion; v++) {
     if (MIGRATION_NOTES[v]) {
       notes.push(MIGRATION_NOTES[v]);
@@ -104,7 +105,7 @@ function buildMigrationWarning(fromVersion, toVersion) {
   return `Config migrated v${fromVersion}→v${toVersion}. ${notes.join(' ')} Run 'kommit --set' to switch.`;
 }
 
-export function migrateConfig(config) {
+export function migrateConfig(config: Config): { config: Config; migrated: boolean; warning: string | null } {
   let migrated = false;
   const fromVersion = config.version || 0;
 
@@ -125,12 +126,12 @@ export function migrateConfig(config) {
   return { config, migrated, warning };
 }
 
-export async function loadConfig() {
+export async function loadConfig(): Promise<{ config: Config; auth: Auth }> {
   const configPath = getConfigPath();
   const authPath = getAuthPath();
 
-  let config;
-  let auth = {};
+  let config: Config;
+  let auth: Auth = {};
 
   const configExists = await fileExists(configPath);
   if (!configExists) {
@@ -165,19 +166,19 @@ export async function loadConfig() {
   return { config, auth };
 }
 
-export async function saveConfig(config) {
+export async function saveConfig(config: Config): Promise<void> {
   const dir = getConfigDir();
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await writeFile(getConfigPath(), JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
-export async function saveAuth(auth) {
+export async function saveAuth(auth: Auth): Promise<void> {
   const dir = getDataDir();
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await writeFile(getAuthPath(), JSON.stringify(auth, null, 2), { mode: 0o600 });
 }
 
-export async function runInitWizard() {
+export async function runInitWizard(): Promise<void> {
   prompts.intro('Welcome to kommit!');
 
   const provider = await prompts.select({
@@ -197,10 +198,10 @@ export async function runInitWizard() {
   }
 
   const needsKey = provider !== 'ollama' && provider !== 'lmstudio';
-  const newAuth = {};
+  const newAuth: Auth = {};
 
   if (needsKey) {
-    const envVarMap = {
+    const envVarMap: Record<string, string> = {
       openai: 'KOMMIT_OPENAI_API_KEY',
       anthropic: 'KOMMIT_ANTHROPIC_API_KEY',
       google: 'KOMMIT_GOOGLE_API_KEY',
@@ -209,7 +210,7 @@ export async function runInitWizard() {
     const envVar = envVarMap[provider];
     const envValue = process.env[envVar];
 
-    let key;
+    let key: string | undefined;
     if (envValue) {
       const useEnv = await prompts.confirm({
         message: `Found ${envVar} in environment. Use it?`,
@@ -224,12 +225,13 @@ export async function runInitWizard() {
     }
 
     if (!key) {
-      key = await prompts.password({
+      const entered = await prompts.password({
         message: `Enter your ${provider} API key:`
       });
-      if (prompts.isCancel(key)) {
+      if (prompts.isCancel(entered)) {
         process.exit(0);
       }
+      key = entered;
     }
 
     newAuth[provider] = key;
@@ -251,7 +253,7 @@ export async function runInitWizard() {
   // Auth: merge new keys with existing
   const authPath = getAuthPath();
   const authExists = await fileExists(authPath);
-  let existingAuth = {};
+  let existingAuth: Auth = {};
 
   if (authExists) {
     const raw = await readFile(authPath, 'utf8');
@@ -269,7 +271,7 @@ export async function runInitWizard() {
   prompts.outro('Setup complete! Run `kommit` to generate commit messages.');
 }
 
-export async function runSetWizard(config, auth) {
+export async function runSetWizard(config: Config, auth: Auth): Promise<void> {
   prompts.intro('Configure kommit');
 
   const setting = await prompts.select({
@@ -286,7 +288,7 @@ export async function runSetWizard(config, auth) {
 
   if (setting === 'defaultProvider') {
     const noKeyProviders = ['ollama', 'lmstudio'];
-    const availableProviders = [];
+    const availableProviders: string[] = [];
 
     for (const name of Object.keys(config.providers || {})) {
       const hasKey = auth[name] && auth[name].length > 0;
@@ -326,9 +328,6 @@ export async function runSetWizard(config, auth) {
     }
 
     config.defaultProvider = selectedProvider;
-    if (!config.providers[selectedProvider]) {
-      config.providers[selectedProvider] = {};
-    }
     config.providers[selectedProvider].model = model.trim();
   }
 
@@ -350,7 +349,7 @@ export async function runSetWizard(config, auth) {
   prompts.outro('Configuration updated!');
 }
 
-export function resolveProvider(config, flags, env, auth = {}) {
+export function resolveProvider(config: Config, flags: Flags, env: NodeJS.ProcessEnv, auth: Auth = {}): string | null {
   if (flags.provider) return flags.provider;
   if (env.KOMMIT_PROVIDER) return env.KOMMIT_PROVIDER;
   if (config.defaultProvider) return config.defaultProvider;
@@ -367,22 +366,22 @@ export function resolveProvider(config, flags, env, auth = {}) {
   return null;
 }
 
-export function resolveSkill(config, flags, env) {
+export function resolveSkill(config: Config, flags: Flags, env: NodeJS.ProcessEnv): string | null {
   if (flags.skill !== undefined) return flags.skill || null;
   if (env.KOMMIT_SKILL !== undefined) return env.KOMMIT_SKILL || null;
   if (config.skillName !== undefined) return config.skillName;
   return null;
 }
 
-export function getAvailableProviders(config, auth, env = {}) {
+export function getAvailableProviders(config: Config, auth: Auth, env: NodeJS.ProcessEnv = {}): string[] {
   const noKeyProviders = ['ollama', 'lmstudio'];
-  const envMap = {
+  const envMap: Record<string, string> = {
     openai: 'KOMMIT_OPENAI_API_KEY',
     anthropic: 'KOMMIT_ANTHROPIC_API_KEY',
     google: 'KOMMIT_GOOGLE_API_KEY',
     openrouter: 'KOMMIT_OPENROUTER_API_KEY'
   };
-  const available = [];
+  const available: string[] = [];
 
   for (const name of Object.keys(config.providers || {})) {
     const envVar = envMap[name];
