@@ -307,6 +307,25 @@ This is useful when you want to switch providers or models without re-entering A
 
 > **Tip:** If your default provider is temporarily unavailable (timeout, network error, or 5xx), kommit will offer to retry with another configured provider. The fallback is temporary, your default provider stays unchanged.
 
+## Development
+
+Kommit is written in TypeScript and runs on Node 24's built-in type stripping, so there is **no build step while developing**; the source runs as-is.
+
+```bash
+node src/cli.ts --help   # run straight from source
+npm test                 # run the test suite
+npm run typecheck        # type-check src/ and tests/
+npm run build            # emit dist/ (only needed for publishing)
+```
+
+### Publishing
+
+`npm publish` builds automatically via `prepublishOnly`, so the published tarball is always compiled fresh.
+
+> **Note:** `npm pack` does **not** run `prepublishOnly`. If you want to inspect a tarball before publishing, run `npm run build` first; otherwise you are packing whatever happens to be sitting in `dist/`, which may be stale.
+
+The published package ships compiled JavaScript from `dist/`, never the TypeScript sources: Node refuses to strip types from files under `node_modules`, so a package that shipped `.ts` would install cleanly and then fail at runtime.
+
 ## License
 
 [MIT License](LICENSE)
