@@ -51,3 +51,37 @@ jobs:
 
       - name: Test
         run: npm test
+
+  package:
+    name: Package smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # npm pack does not run prepublishOnly, so build explicitly, as publishing would.
+      - name: Build
+        run: npm run build
+
+      - name: Pack
+        run: npm pack --pack-destination /tmp
+
+      # A real install puts the files under node_modules, where Node refuses to strip
+      # types. `npm link` resolves out of node_modules and would pass regardless, so
+      # only installing the tarball proves the published package actually runs.
+      - name: Install the tarball
+        run: npm install -g /tmp/kommit-cli-*.tgz
+
+      - name: Run the installed CLI
+        run: |
+          kommit --version
+          kommit --help > /dev/null
+          test "$(kommit --version)" = "$(node -p "require('./package.json').version")"
