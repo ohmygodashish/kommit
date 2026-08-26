@@ -7,14 +7,15 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 
 import { getAllChanges } from '../src/git.ts';
+import { providerConfig } from './fixtures.ts';
 
 const execFileAsync = promisify(execFile);
 
 describe('git.js — edge cases', () => {
-  let repoDir;
-  let originalCwd;
+  let repoDir: any;
+  let originalCwd: any;
 
-  async function execGit(args, cwd = repoDir) {
+  async function execGit(args: any, cwd = repoDir) {
     return execFileAsync('git', args, { cwd, encoding: 'utf8' });
   }
 
@@ -43,8 +44,8 @@ describe('git.js — edge cases', () => {
       await execGit(['clean', '-fd']);
 
       await assert.rejects(
-        async () => getAllChanges({ maxDiffLength: 12000 }),
-        err => err.code === 'no_changes'
+        async () => getAllChanges(providerConfig({ maxDiffLength: 12000 })),
+        (err: any) => err.code === 'no_changes'
       );
     });
 
@@ -57,7 +58,7 @@ describe('git.js — edge cases', () => {
       await execGit(['commit', '-m', 'add rename-me']);
       await rename(join(repoDir, 'rename-me.txt'), join(repoDir, 'renamed.txt'));
 
-      const result = await getAllChanges({ maxDiffLength: 12000 });
+      const result = await getAllChanges(providerConfig({ maxDiffLength: 12000 }));
       const renameFile = result.files.find(f => f.displayPath.includes('->'));
       assert.ok(renameFile, 'should find renamed file');
       assert.ok(renameFile.stagePaths.includes('rename-me.txt'));
@@ -75,7 +76,7 @@ describe('git.js — edge cases', () => {
       await execGit(['commit', '-m', 'add staged rename']);
       await execGit(['mv', 'staged-rename.txt', 'staged-renamed.txt']);
 
-      const result = await getAllChanges({ maxDiffLength: 12000 });
+      const result = await getAllChanges(providerConfig({ maxDiffLength: 12000 }));
       const renameFile = result.files.find(f => f.displayPath === 'staged-rename.txt -> staged-renamed.txt');
       assert.ok(renameFile, 'should retain staged rename metadata');
       assert.ok(result.diff.includes('rename from staged-rename.txt'));
@@ -89,7 +90,7 @@ describe('git.js — edge cases', () => {
       const fileName = 'file with spaces.txt';
       await writeFile(join(repoDir, fileName), 'content');
 
-      const result = await getAllChanges({ maxDiffLength: 12000 });
+      const result = await getAllChanges(providerConfig({ maxDiffLength: 12000 }));
       const file = result.files.find(f => f.path === fileName);
       assert.ok(file, 'should parse quoted path');
       assert.strictEqual(file.displayPath, fileName);
@@ -109,7 +110,7 @@ describe('git.js — edge cases', () => {
       await writeFile(join(unbornDir, 'second.js'), 'console.log("world");');
 
       try {
-        const result = await getAllChanges({ maxDiffLength: 12000 });
+        const result = await getAllChanges(providerConfig({ maxDiffLength: 12000 }));
         assert.ok(result.diff.includes('first.js'), 'diff should include staged file');
         assert.ok(result.diff.includes('second.js'), 'diff should include unstaged file');
         assert.strictEqual(result.files.length, 2);
@@ -127,7 +128,7 @@ describe('git.js — edge cases', () => {
       await writeFile(join(repoDir, fileName), 'content');
       await execGit(['add', fileName]);
 
-      const result = await getAllChanges({ maxDiffLength: 12000 });
+      const result = await getAllChanges(providerConfig({ maxDiffLength: 12000 }));
       const file = result.files.find(f => f.path === fileName);
       assert.ok(file, 'should find the file');
       assert.strictEqual(file.displayPath, fileName);

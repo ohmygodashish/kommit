@@ -6,14 +6,15 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { providerConfig } from './fixtures.ts';
 
 const execFileAsync = promisify(execFile);
 
 describe('git.ts', () => {
-  let repoDir;
-  let originalCwd;
+  let repoDir: any;
+  let originalCwd: any;
 
-  async function execGit(args, cwd = repoDir) {
+  async function execGit(args: any, cwd = repoDir) {
     return execFileAsync('git', args, { cwd, encoding: 'utf8' });
   }
 
@@ -44,7 +45,7 @@ describe('git.ts', () => {
       await writeFile(join(repoDir, 'staged.txt'), 'hello');
       await execGit(['add', 'staged.txt']);
 
-      const result = await getDiff({ maxDiffLength: 12000 });
+      const result = await getDiff(providerConfig({ maxDiffLength: 12000 }));
       assert.strictEqual(result.source, 'staged');
       assert.ok(result.diff.includes('diff --git'));
       assert.ok(result.diff.includes('staged.txt'));
@@ -55,7 +56,7 @@ describe('git.ts', () => {
       await execGit(['reset', 'HEAD']);
       await writeFile(join(repoDir, 'baseline.txt'), 'modified');
 
-      const result = await getDiff({ maxDiffLength: 12000 });
+      const result = await getDiff(providerConfig({ maxDiffLength: 12000 }));
       assert.strictEqual(result.source, 'unstaged');
       assert.ok(result.diff.includes('baseline.txt'));
     });
@@ -70,7 +71,7 @@ describe('git.ts', () => {
       await rename(join(repoDir, 'rename-source.txt'), join(repoDir, 'rename-target.txt'));
       await writeFile(join(repoDir, 'unrelated.txt'), 'leave me untracked');
 
-      const result = await getDiff({ maxDiffLength: 12000 });
+      const result = await getDiff(providerConfig({ maxDiffLength: 12000 }));
 
       assert.strictEqual(result.source, 'unstaged');
       assert.ok(result.diff.includes('rename from rename-source.txt'));
@@ -95,8 +96,8 @@ describe('git.ts', () => {
       process.chdir(emptyDir);
 
       await assert.rejects(
-        async () => getDiff({ maxDiffLength: 12000 }),
-        err => err.code === 'no_changes'
+        async () => getDiff(providerConfig({ maxDiffLength: 12000 })),
+        (err: any) => err.code === 'no_changes'
       );
 
       process.chdir(prevCwd);
@@ -112,7 +113,7 @@ describe('git.ts', () => {
       await writeFile(bigFile, content);
       await execGit(['add', 'big.txt']);
 
-      const result = await getDiff({ maxDiffLength: 200 });
+      const result = await getDiff(providerConfig({ maxDiffLength: 200 }));
       assert.strictEqual(result.truncated, true);
       assert.ok(result.diff.endsWith('[diff truncated...]'));
     });
@@ -121,7 +122,7 @@ describe('git.ts', () => {
       await writeFile(join(repoDir, 'small.txt'), 'tiny');
       await execGit(['add', 'small.txt']);
 
-      const result = await getDiff({ maxDiffLength: 12000 });
+      const result = await getDiff(providerConfig({ maxDiffLength: 12000 }));
       assert.strictEqual(result.truncated, false);
       assert.ok(!result.diff.includes('[diff truncated...]'));
     });
@@ -137,7 +138,7 @@ describe('git.ts', () => {
       await writeFile(join(repoDir, 'baseline.txt'), 'staged and unstaged version');
       await writeFile(join(repoDir, 'new-file.txt'), 'brand new');
 
-      const result = await getAllChanges({ maxDiffLength: 12000 });
+      const result = await getAllChanges(providerConfig({ maxDiffLength: 12000 }));
 
       assert.ok(result.diff.includes('baseline.txt'));
       assert.ok(result.diff.includes('new-file.txt'));
@@ -381,7 +382,7 @@ describe('git.ts', () => {
       try {
         await assert.rejects(
           async () => undoCommits(1),
-          err => err.code === 'undo_failed'
+          (err: any) => err.code === 'undo_failed'
         );
       } finally {
         process.chdir(prevCwd);

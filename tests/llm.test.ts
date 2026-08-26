@@ -1,6 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import { isRetryable, generateMessage, LLMError } from '../src/llm.ts';
+import { providerConfig } from './fixtures.ts';
 
 describe('llm.ts', () => {
   describe('isRetryable', () => {
@@ -28,7 +29,7 @@ describe('llm.ts', () => {
   });
 
   describe('generateMessage', () => {
-    let originalFetch;
+    let originalFetch: any;
 
     before(() => {
       originalFetch = global.fetch;
@@ -39,8 +40,8 @@ describe('llm.ts', () => {
     });
 
     it('calls OpenAI-compatible endpoint with correct payload', async () => {
-      let capturedBody;
-      global.fetch = async (url, options) => {
+      let capturedBody: any;
+      global.fetch = (async (url: any, options: any) => {
         capturedBody = JSON.parse(options.body);
         return {
           ok: true,
@@ -50,11 +51,11 @@ describe('llm.ts', () => {
             choices: [{ message: { content: '{"subject":"feat: test","body":""}' } }]
           })
         };
-      };
+      }) as unknown as typeof fetch;
 
       const result = await generateMessage(
         'openai',
-        { model: 'gpt-test', endpoint: 'https://api.test.com/v1/chat/completions', timeout: 5000 },
+        providerConfig({ model: 'gpt-test', endpoint: 'https://api.test.com/v1/chat/completions', timeout: 5000 }),
         'sk-test',
         'system prompt',
         'user prompt'
@@ -69,8 +70,8 @@ describe('llm.ts', () => {
     });
 
     it('calls Anthropic endpoint with correct payload', async () => {
-      let capturedBody;
-      global.fetch = async (url, options) => {
+      let capturedBody: any;
+      global.fetch = (async (url: any, options: any) => {
         capturedBody = JSON.parse(options.body);
         return {
           ok: true,
@@ -80,11 +81,11 @@ describe('llm.ts', () => {
             content: [{ text: '{"subject":"fix: bug","body":"details"}' }]
           })
         };
-      };
+      }) as unknown as typeof fetch;
 
       await generateMessage(
         'anthropic',
-        { model: 'claude-test', endpoint: 'https://api.anthropic.com/v1/messages', timeout: 5000 },
+        providerConfig({ model: 'claude-test', endpoint: 'https://api.anthropic.com/v1/messages', timeout: 5000 }),
         'sk-ant-test',
         'system',
         'user'
@@ -96,9 +97,9 @@ describe('llm.ts', () => {
     });
 
     it('calls Google endpoint with correct payload', async () => {
-      let capturedUrl;
-      let capturedBody;
-      global.fetch = async (url, options) => {
+      let capturedUrl: any;
+      let capturedBody: any;
+      global.fetch = (async (url: any, options: any) => {
         capturedUrl = url;
         capturedBody = JSON.parse(options.body);
         return {
@@ -109,11 +110,11 @@ describe('llm.ts', () => {
             candidates: [{ content: { parts: [{ text: '{"subject":"chore: update","body":""}' }] } }]
           })
         };
-      };
+      }) as unknown as typeof fetch;
 
       await generateMessage(
         'google',
-        { model: 'gemini-test', endpoint: 'https://generativelanguage.googleapis.com/v1beta/models', timeout: 5000 },
+        providerConfig({ model: 'gemini-test', endpoint: 'https://generativelanguage.googleapis.com/v1beta/models', timeout: 5000 }),
         'api-key',
         'sys',
         'usr'
@@ -125,7 +126,7 @@ describe('llm.ts', () => {
     });
 
     it('throws timeout error on slow response', async () => {
-      global.fetch = async (url, options) => {
+      global.fetch = (async (url: any, options: any) => {
         if (options.signal?.aborted) {
           const err = new Error('The operation was aborted');
           err.name = 'AbortError';
@@ -138,75 +139,75 @@ describe('llm.ts', () => {
           throw err;
         }
         return { ok: true, json: async () => ({}) };
-      };
+      }) as unknown as typeof fetch;
 
       await assert.rejects(
         async () => generateMessage(
           'openai',
-          { model: 'x', endpoint: 'http://localhost', timeout: 10 },
+          providerConfig({ model: 'x', endpoint: 'http://localhost', timeout: 10 }),
           '',
           '',
           ''
         ),
-        err => err.code === 'timeout'
+        (err: any) => err.code === 'timeout'
       );
     });
 
     it('throws api_error on 5xx', async () => {
-      global.fetch = async () => ({
+      global.fetch = (async () => ({
         ok: false,
         status: 503,
         text: async () => 'server error'
-      });
+      })) as unknown as typeof fetch;
 
       await assert.rejects(
         async () => generateMessage(
           'openai',
-          { model: 'x', endpoint: 'http://localhost', timeout: 5000 },
+          providerConfig({ model: 'x', endpoint: 'http://localhost', timeout: 5000 }),
           '',
           '',
           ''
         ),
-        err => err.code === 'api_error' && err.status === 503
+        (err: any) => err.code === 'api_error' && err.status === 503
       );
     });
 
     it('throws api_error on 4xx', async () => {
-      global.fetch = async () => ({
+      global.fetch = (async () => ({
         ok: false,
         status: 401,
         text: async () => 'unauthorized'
-      });
+      })) as unknown as typeof fetch;
 
       await assert.rejects(
         async () => generateMessage(
           'openai',
-          { model: 'x', endpoint: 'http://localhost', timeout: 5000 },
+          providerConfig({ model: 'x', endpoint: 'http://localhost', timeout: 5000 }),
           '',
           '',
           ''
         ),
-        err => err.code === 'api_error' && err.status === 401
+        (err: any) => err.code === 'api_error' && err.status === 401
       );
     });
 
     it('throws invalid_response when content missing', async () => {
-      global.fetch = async () => ({
+      global.fetch = (async () => ({
         ok: true,
         status: 200,
         text: async () => '',
         json: async () => ({ choices: [] })
-      });
+      })) as unknown as typeof fetch;
 
       await assert.rejects(
         async () => generateMessage(
           'openai',
-          { model: 'x', endpoint: 'http://localhost', timeout: 5000 },
+          providerConfig({ model: 'x', endpoint: 'http://localhost', timeout: 5000 }),
           '',
           '',
           ''
         ),
-        err => err.code === 'invalid_response'
+        (err: any) => err.code === 'invalid_response'
       );
     });
 
@@ -216,12 +217,12 @@ describe('llm.ts', () => {
       await assert.rejects(
         async () => generateMessage(
           'openai',
-          { model: 'x', endpoint: 'http://localhost', timeout: 5000 },
+          providerConfig({ model: 'x', endpoint: 'http://localhost', timeout: 5000 }),
           '',
           '',
           ''
         ),
-        err => err.code === 'network'
+        (err: any) => err.code === 'network'
       );
     });
   });

@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { promptError, promptSelectProvider, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, editMessage, setSelectForTesting } from '../src/ui.ts';
+import { commitPlan } from './fixtures.ts';
 
 describe('ui.ts', () => {
   describe('promptError', () => {
@@ -26,7 +27,7 @@ describe('ui.ts', () => {
     });
 
     it('shows switch option only when availableProviders is non-empty', async () => {
-      let capturedOptions;
+      let capturedOptions: any;
       setSelectForTesting((opts) => {
         capturedOptions = opts;
         return 'cancel';
@@ -35,12 +36,12 @@ describe('ui.ts', () => {
       await promptError(new Error('timeout'), true, ['openai']);
       setSelectForTesting(null);
 
-      const values = capturedOptions.options.map(o => o.value);
+      const values = capturedOptions.options.map((o: any) => o.value);
       assert.ok(values.includes('switch'));
     });
 
     it('hides switch option when availableProviders is empty', async () => {
-      let capturedOptions;
+      let capturedOptions: any;
       setSelectForTesting((opts) => {
         capturedOptions = opts;
         return 'cancel';
@@ -49,12 +50,12 @@ describe('ui.ts', () => {
       await promptError(new Error('timeout'), true, []);
       setSelectForTesting(null);
 
-      const values = capturedOptions.options.map(o => o.value);
+      const values = capturedOptions.options.map((o: any) => o.value);
       assert.ok(!values.includes('switch'));
     });
 
     it('hides retry option when canRetry is false', async () => {
-      let capturedOptions;
+      let capturedOptions: any;
       setSelectForTesting((opts) => {
         capturedOptions = opts;
         return 'cancel';
@@ -63,7 +64,7 @@ describe('ui.ts', () => {
       await promptError(new Error('bad request'), false, ['openai']);
       setSelectForTesting(null);
 
-      const values = capturedOptions.options.map(o => o.value);
+      const values = capturedOptions.options.map((o: any) => o.value);
       assert.ok(!values.includes('retry'));
     });
 
@@ -75,7 +76,7 @@ describe('ui.ts', () => {
     });
 
     it('always shows cancel option', async () => {
-      let capturedOptions;
+      let capturedOptions: any;
       setSelectForTesting((opts) => {
         capturedOptions = opts;
         return 'cancel';
@@ -84,7 +85,7 @@ describe('ui.ts', () => {
       await promptError(new Error('timeout'), false, []);
       setSelectForTesting(null);
 
-      const values = capturedOptions.options.map(o => o.value);
+      const values = capturedOptions.options.map((o: any) => o.value);
       assert.ok(values.includes('cancel'));
     });
   });
@@ -105,7 +106,7 @@ describe('ui.ts', () => {
     });
 
     it('passes all providers as options', async () => {
-      let capturedOptions;
+      let capturedOptions: any;
       setSelectForTesting((opts) => {
         capturedOptions = opts;
         return 'anthropic';
@@ -114,7 +115,7 @@ describe('ui.ts', () => {
       await promptSelectProvider(['openai', 'anthropic', 'google']);
       setSelectForTesting(null);
 
-      const values = capturedOptions.options.map(o => o.value);
+      const values = capturedOptions.options.map((o: any) => o.value);
       assert.deepStrictEqual(values, ['openai', 'anthropic', 'google']);
     });
   });
@@ -132,9 +133,9 @@ describe('ui.ts', () => {
     it('returns selected commit indexes', async () => {
       setSelectForTesting(null, null, () => [0, 2]);
       const result = await promptSelectCommits([
-        { subject: 'feat: one', files: ['a.js'] },
-        { subject: 'fix: two', files: ['b.js'] },
-        { subject: 'test: three', files: ['c.js'] }
+        commitPlan({ subject: 'feat: one', files: ['a.js'] }),
+        commitPlan({ subject: 'fix: two', files: ['b.js'] }),
+        commitPlan({ subject: 'test: three', files: ['c.js'] })
       ]);
       setSelectForTesting(null);
       assert.deepStrictEqual(result, [0, 2]);
@@ -142,7 +143,7 @@ describe('ui.ts', () => {
 
     it('returns null on cancel', async () => {
       setSelectForTesting(null, () => true, () => Symbol('cancel'));
-      const result = await promptSelectCommits([{ subject: 'feat: one', files: ['a.js'] }]);
+      const result = await promptSelectCommits([commitPlan({ subject: 'feat: one', files: ['a.js'] })]);
       setSelectForTesting(null);
       assert.strictEqual(result, null);
     });
@@ -152,8 +153,8 @@ describe('ui.ts', () => {
     it('returns the selected commit index', async () => {
       setSelectForTesting(() => 1);
       const result = await promptSelectCommitToEdit([
-        { subject: 'feat: one', files: ['a.js'] },
-        { subject: 'fix: two', files: ['b.js'] }
+        commitPlan({ subject: 'feat: one', files: ['a.js'] }),
+        commitPlan({ subject: 'fix: two', files: ['b.js'] })
       ]);
       setSelectForTesting(null);
       assert.strictEqual(result, 1);

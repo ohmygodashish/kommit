@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { parseResponse, parseMultiResponse, validateSubject, buildPrompt, buildMultiCommitPrompt } from '../src/prompt.ts';
 import { writeFile, mkdir, rm } from 'fs/promises';
+import { config as makeConfig, fileChange } from './fixtures.ts';
 import { homedir } from 'os';
 import { join } from 'path';
 
@@ -70,7 +71,7 @@ describe('prompt.ts', () => {
     const skillBaseDir = join(homedir(), '.agents', 'skills');
 
     it('returns system and user prompts', async () => {
-      const config = { _resolvedSkill: null };
+      const config = makeConfig({ _resolvedSkill: null });
       const result = await buildPrompt('some diff', config);
       assert.strictEqual(typeof result.system, 'string');
       assert.ok(result.system.includes('Conventional Commits'));
@@ -85,7 +86,7 @@ describe('prompt.ts', () => {
       await writeFile(join(skillDir, 'SKILL.md'), 'Always use present tense.');
 
       try {
-        const config = { _resolvedSkill: 'test-skill' };
+        const config = makeConfig({ _resolvedSkill: 'test-skill' });
         const result = await buildPrompt('diff', config);
         assert.ok(result.system.includes('Always use present tense.'));
         assert.ok(result.system.includes('</skill>'));
@@ -96,19 +97,19 @@ describe('prompt.ts', () => {
     });
 
     it('warns when skill file is missing', async () => {
-      const config = { _resolvedSkill: 'missing-skill-xyz' };
+      const config = makeConfig({ _resolvedSkill: 'missing-skill-xyz' });
       const result = await buildPrompt('diff', config);
-      assert.ok(result.warning.includes("Skill 'missing-skill-xyz' not found"));
-      assert.ok(result.warning.includes('Using base prompt'));
+      assert.ok(result.warning?.includes("Skill 'missing-skill-xyz' not found"));
+      assert.ok(result.warning?.includes('Using base prompt'));
     });
   });
 
   describe('buildMultiCommitPrompt', () => {
     it('includes the file list and multi-commit instructions', async () => {
-      const config = { _resolvedSkill: null };
+      const config = makeConfig({ _resolvedSkill: null });
       const result = await buildMultiCommitPrompt('diff body', [
-        { status: 'M ', displayPath: 'src/index.js' },
-        { status: '??', displayPath: 'tests/new.test.js' }
+        fileChange({ status: 'M ', displayPath: 'src/index.js' }),
+        fileChange({ status: '??', displayPath: 'tests/new.test.js' })
       ], config);
 
       assert.ok(result.system.includes('Split the changes into multiple logical commits'));

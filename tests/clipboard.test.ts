@@ -2,24 +2,25 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { EventEmitter } from 'events';
 import { copyToClipboard, setSpawnForTesting } from '../src/clipboard.ts';
+import type { NodeError } from '../src/types.ts';
 
-function makeEnoent() {
-  const err = new Error('ENOENT');
+function makeEnoent(): NodeError {
+  const err = new Error('ENOENT') as NodeError;
   err.code = 'ENOENT';
   return err;
 }
 
-function spawnFactory(behaviors) {
+function spawnFactory(behaviors: any) {
   let call = 0;
-  const calls = [];
+  const calls: any[] = [];
 
   return {
-    spawn: (cmd, args, options) => {
+    spawn: (cmd: any, args: any, options: any) => {
       calls.push({ cmd, args });
       const behavior = behaviors[call] || behaviors[behaviors.length - 1];
-      const child = new EventEmitter();
+      const child = new EventEmitter() as any;
       child.stdin = {
-        write: (data) => { calls[calls.length - 1].text = (calls[calls.length - 1].text || '') + data; },
+        write: (data: any) => { calls[calls.length - 1].text = (calls[calls.length - 1].text || '') + data; },
         end: () => {}
       };
       call++;
@@ -133,7 +134,7 @@ describe('clipboard.ts', () => {
 
       await assert.rejects(
         () => copyToClipboard('test', 'linux'),
-        (e) => {
+        (e: any) => {
           return e.message.includes('Clipboard not available') &&
             e.message.includes('xclip:') &&
             e.message.includes('xsel:') &&
@@ -153,7 +154,7 @@ describe('clipboard.ts', () => {
 
       await assert.rejects(
         () => copyToClipboard('test', 'linux'),
-        (e) => {
+        (e: any) => {
           return e.message.includes('Clipboard not available') &&
             e.message.includes('xclip exited with code 1') &&
             e.message.includes('xsel exited with code 1') &&
@@ -174,7 +175,7 @@ describe('clipboard.ts', () => {
 
       await assert.rejects(
         () => copyToClipboard('test', 'linux'),
-        (e) => {
+        (e: any) => {
           return e.message.includes('Clipboard not available') &&
             e.message.includes('xclip: ENOENT') &&
             e.message.includes('xsel exited with code 1') &&

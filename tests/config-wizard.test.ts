@@ -5,49 +5,58 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 import { runInitWizard, runSetWizard, setPromptsForTesting } from '../src/config.ts';
+import type { Config, ProviderConfig } from '../src/types.ts';
+
+type Overrides = NonNullable<Parameters<typeof setPromptsForTesting>[0]>;
+
+/** A scripted prompt stub that also records the options it was called with. */
+interface Stub {
+  (opts: any): Promise<any>;
+  calls: any[];
+}
 
 const CANCEL = Symbol('cancel');
 
 // The seam types exit as `never`, so a stub has to throw. That is exactly what production
 // does to control flow, and it means a test can never silently run past an exit.
 class ExitSignal extends Error {
-  code;
+  code: number;
 
-  constructor(code) {
+  constructor(code: number) {
     super(`exit ${code}`);
     this.code = code;
   }
 }
 
-function exit(code) {
+function exit(code: number): never {
   throw new ExitSignal(code);
 }
 
 // Answers each prompt in order, and refuses to invent an answer nobody scripted.
-function queue(values) {
+function queue(values: unknown[]): Stub {
   const remaining = [...values];
-  const fn = async opts => {
+  const fn = (async (opts: any) => {
     fn.calls.push(opts);
     if (remaining.length === 0) {
       throw new Error('prompt called more times than the test scripted');
     }
     return remaining.shift();
-  };
+  }) as Stub;
   fn.calls = [];
   return fn;
 }
 
-function isCancel(value) {
+function isCancel(value: unknown): value is symbol {
   return value === CANCEL;
 }
 
 // intro/outro write ANSI sequences to stdout, which corrupts the test runner's IPC on the
 // same stream. Every test goes through here so none can forget to silence them.
-function overrides(extra) {
+function overrides(extra: Overrides = {}): Overrides {
   return { intro() {}, outro() {}, isCancel, exit, ...extra };
 }
 
-async function exists(path) {
+async function exists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
@@ -57,10 +66,10 @@ async function exists(path) {
 }
 
 describe('config.ts wizards', () => {
-  let baseDir;
-  let originalEnv;
-  let configPath;
-  let authPath;
+  let baseDir: string;
+  let originalEnv: NodeJS.ProcessEnv;
+  let configPath: string;
+  let authPath: string;
 
   before(async () => {
     originalEnv = { ...process.env };
@@ -89,7 +98,7 @@ describe('config.ts wizards', () => {
     authPath = join(dataDir, 'kommit', 'auth.json');
   });
 
-  async function readJson(path) {
+  async function readJson(path: string): Promise<any> {
     return JSON.parse(await readFile(path, 'utf8'));
   }
 
@@ -180,7 +189,7 @@ describe('config.ts wizards', () => {
   });
 
   describe('runSetWizard', () => {
-    function baseConfig(providers) {
+    function baseConfig(providers: Record<string, ProviderConfig>): Config {
       return {
         version: 2,
         defaultProvider: 'openai',
@@ -216,7 +225,7 @@ describe('config.ts wizards', () => {
 
       await runSetWizard(config, { openai: 'k1' });
 
-      const offered = select.calls[1].options.map(o => o.value);
+      const offered = select.calls[1].options.map((o: any) => o.value);
       assert.deepStrictEqual(offered, ['openai']);
     });
 
