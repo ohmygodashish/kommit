@@ -6,7 +6,7 @@ import process from 'process';
 import { loadConfig, runInitWizard, runSetWizard, resolveProvider, resolveSkill, getAvailableProviders } from './config.js';
 import { getDiff, getAllChanges, commit, stageTracked, stageFiles, unstageAll, getRepoRoot, getLastCommits, isMergeCommit, isCommitPushed, undoCommits } from './git.js';
 import { generateMessage, isRetryable } from './llm.js';
-import { buildPrompt, buildMultiCommitPrompt, parseResponse, parseMultiResponse, validateSubject } from './prompt.js';
+import { buildPrompt, buildMultiCommitPrompt, parseResponse, parseMultiResponse, validateSubject } from './prompt.ts';
 import { promptAction, editMessage, promptError, promptSelectProvider, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, withSpinner, promptUndoConfirmation, promptUndoAction } from './ui.js';
 import { parseArgs, getApiKey, printHelp, getVersion } from './args.ts';
 import { copyToClipboard } from './clipboard.ts';
