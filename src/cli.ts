@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// @ts-expect-error - index is still JavaScript; becomes './index.ts' when it is ported.
-import { main } from './index.js';
+import { main } from './index.ts';
+import type { NodeError } from './types.ts';
 
-main().catch((err: Error) => {
+main().catch((err: NodeError) => {
   console.error(`kommit: ${err.message}`);
   process.exit(1);
 });
