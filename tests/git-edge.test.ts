@@ -6,7 +6,7 @@ import { join } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
-import { getAllChanges } from '../src/git.js';
+import { getAllChanges } from '../src/git.ts';
 
 const execFileAsync = promisify(execFile);
 

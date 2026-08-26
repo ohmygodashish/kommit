@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { getDiff, getAllChanges, stageTracked, stageFiles, unstageAll, commit, getRepoRoot, getLastCommits, isMergeCommit, isCommitPushed, undoCommits } from '../src/git.js';
+import { getDiff, getAllChanges, stageTracked, stageFiles, unstageAll, commit, getRepoRoot, getLastCommits, isMergeCommit, isCommitPushed, undoCommits } from '../src/git.ts';
 import { mkdtemp, writeFile, rm, mkdir, rename, realpath } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -9,7 +9,7 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-describe('git.js', () => {
+describe('git.ts', () => {
   let repoDir;
   let originalCwd;
 
