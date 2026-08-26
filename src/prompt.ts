@@ -1,6 +1,7 @@
 import { readFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
+import type { CommitMessage, CommitPlan, Config, FileChange, PromptResult } from './types.ts';
 
 const BASE_SYSTEM_PROMPT = `You are a commit message generator. Analyze the provided git diff and produce a concise, accurate commit message following the Conventional Commits specification.
 
@@ -19,7 +20,7 @@ Rules:
 
 const CONVENTIONAL_COMMIT_RE = /^(feat|fix|docs|style|refactor|perf|test|chore|ci|build)(\([a-z0-9-]+\))?!?: .{1,72}$/;
 
-function stripCodeFences(raw) {
+function stripCodeFences(raw: string): string {
   const trimmed = raw.trim();
 
   let cleaned = trimmed;
@@ -34,8 +35,8 @@ function stripCodeFences(raw) {
   return cleaned.trim();
 }
 
-async function loadSkillContent(config) {
-  let warning = null;
+async function loadSkillContent(config: Config): Promise<{ skillContent: string; warning: string | null }> {
+  let warning: string | null = null;
   let skillContent = '';
 
   const skillName = config._resolvedSkill || null;
@@ -54,7 +55,7 @@ async function loadSkillContent(config) {
   return { skillContent, warning };
 }
 
-async function buildSystemPrompt(config, extraRules = '') {
+async function buildSystemPrompt(config: Config, extraRules = ''): Promise<{ systemPrompt: string; warning: string | null }> {
   let systemPrompt = BASE_SYSTEM_PROMPT;
   if (extraRules) {
     systemPrompt += `\n${extraRules}`;
@@ -68,7 +69,7 @@ async function buildSystemPrompt(config, extraRules = '') {
   return { systemPrompt, warning };
 }
 
-export async function buildPrompt(diff, config) {
+export async function buildPrompt(diff: string, config: Config): Promise<PromptResult> {
   const { systemPrompt, warning } = await buildSystemPrompt(config);
 
   const userPrompt = `--- BEGIN GIT DIFF ---\n${diff}\n--- END GIT DIFF ---\n\nGenerate a commit message for the changes above.`;
@@ -76,7 +77,7 @@ export async function buildPrompt(diff, config) {
   return { system: systemPrompt, user: userPrompt, warning };
 }
 
-export async function buildMultiCommitPrompt(diff, files, config) {
+export async function buildMultiCommitPrompt(diff: string, files: FileChange[], config: Config): Promise<PromptResult> {
   const fileList = files
     .map(file => `- [${file.status}] ${file.displayPath}`)
     .join('\n');
@@ -96,7 +97,7 @@ Additional rules for this response:
   return { system: systemPrompt, user: userPrompt, warning };
 }
 
-export function parseResponse(raw) {
+export function parseResponse(raw: string): CommitMessage {
   const cleaned = stripCodeFences(raw);
 
   let parsed;
@@ -113,7 +114,7 @@ export function parseResponse(raw) {
   return { subject: parsed.subject, body: parsed.body };
 }
 
-export function parseMultiResponse(raw, allowedFiles = null) {
+export function parseMultiResponse(raw: string, allowedFiles: string[] | Map<string, string> | null = null): CommitPlan[] {
   const cleaned = stripCodeFences(raw);
 
   let parsed;
@@ -133,18 +134,18 @@ export function parseMultiResponse(raw, allowedFiles = null) {
     ? allowedFiles
     : allowedFiles ? new Map(allowedFiles.map(file => [file, file])) : null;
   const expectedFileCount = aliases ? new Set(aliases.values()).size : null;
-  const seenFiles = new Set();
+  const seenFiles = new Set<string>();
 
-  const commits = parsed.commits.map(commit => {
+  const commits: CommitPlan[] = parsed.commits.map((commit: any) => {
     if (!commit || !Array.isArray(commit.files) || typeof commit.subject !== 'string' || typeof commit.body !== 'string') {
       throw Object.assign(new Error('LLM response has invalid commit group shape'), { raw, code: 'PARSE_ERROR' });
     }
 
-    if (commit.files.length === 0 || commit.files.some(file => typeof file !== 'string' || !file.trim())) {
+    if (commit.files.length === 0 || commit.files.some((file: unknown) => typeof file !== 'string' || !file.trim())) {
       throw Object.assign(new Error('LLM response includes an empty file entry'), { raw, code: 'PARSE_ERROR' });
     }
 
-    const files = [];
+    const files: string[] = [];
 
     for (const file of commit.files) {
       const canonical = aliases ? aliases.get(file) : file;
@@ -175,6 +176,6 @@ export function parseMultiResponse(raw, allowedFiles = null) {
   return commits;
 }
 
-export function validateSubject(subject) {
+export function validateSubject(subject: string): boolean {
   return CONVENTIONAL_COMMIT_RE.test(subject);
 }

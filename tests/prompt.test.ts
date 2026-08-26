@@ -1,11 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { parseResponse, parseMultiResponse, validateSubject, buildPrompt, buildMultiCommitPrompt } from '../src/prompt.js';
+import { parseResponse, parseMultiResponse, validateSubject, buildPrompt, buildMultiCommitPrompt } from '../src/prompt.ts';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 
-describe('prompt.js', () => {
+describe('prompt.ts', () => {
   describe('parseResponse', () => {
     it('parses clean JSON', () => {
       const raw = '{"subject": "feat: add auth", "body": "Adds JWT validation"}';

@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { parseMultiResponse } from '../src/prompt.js';
+import { parseMultiResponse } from '../src/prompt.ts';
 
-describe('prompt.js — multi-commit edge cases', () => {
+describe('prompt.ts — multi-commit edge cases', () => {
   describe('parseMultiResponse', () => {
     it('throws when commit shape is invalid (missing files array)', () => {
       const raw = JSON.stringify({
