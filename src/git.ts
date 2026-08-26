@@ -3,10 +3,15 @@ import { copyFile, mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { promisify } from 'util';
+import type { ChangeResult, DiffResult, FileChange, LogEntry, ProviderConfig, UndoResult } from './types.ts';
 
 const execFileAsync = promisify(execFile);
 
-function execGit(args, options = {}) {
+interface GitOptions {
+  env?: NodeJS.ProcessEnv;
+}
+
+function execGit(args: string[], options: GitOptions = {}) {
   return execFileAsync('git', args, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, ...options });
 }
 
@@ -18,17 +23,17 @@ async function ensureRepo() {
   }
 }
 
-export async function getRepoRoot() {
+export async function getRepoRoot(): Promise<string> {
   const { stdout } = await execGit(['rev-parse', '--show-toplevel']);
   return stdout.trim();
 }
 
-export async function getDiff(providerConfig) {
+export async function getDiff(providerConfig: ProviderConfig): Promise<DiffResult> {
   await ensureRepo();
 
   let diff = '';
-  let source = 'staged';
-  let stagePaths = [];
+  let source: DiffResult['source'] = 'staged';
+  let stagePaths: string[] = [];
 
   try {
     const result = await execGit(['diff', '--cached', '--find-renames']);
@@ -63,7 +68,7 @@ export async function getDiff(providerConfig) {
   };
 }
 
-export async function getAllChanges(providerConfig) {
+export async function getAllChanges(providerConfig: ProviderConfig): Promise<ChangeResult> {
   await ensureRepo();
 
   const { diff, files } = await getTemporaryIndexChanges({ includeUntracked: true });
@@ -81,7 +86,7 @@ export async function getAllChanges(providerConfig) {
   };
 }
 
-async function getTemporaryIndexChanges({ includeUntracked }) {
+async function getTemporaryIndexChanges({ includeUntracked }: { includeUntracked: boolean }): Promise<{ diff: string; files: FileChange[] }> {
   return withTemporaryIndex(async options => {
     const [{ stdout: statusOutput }, untrackedPaths] = await Promise.all([
       execGit(['diff', '--cached', '--name-status', '-z', '--find-renames'], options),
@@ -108,7 +113,7 @@ async function getTemporaryIndexChanges({ includeUntracked }) {
 }
 
 // Let Git detect working-tree renames without changing the user's real index.
-async function withTemporaryIndex(callback) {
+async function withTemporaryIndex<T>(callback: (options: GitOptions) => Promise<T>): Promise<T> {
   const { stdout } = await execGit(['rev-parse', '--git-path', 'index']);
   const indexPath = resolve(stdout.trim());
   const directory = await mkdtemp(join(tmpdir(), 'kommit-index-'));
@@ -121,7 +126,7 @@ async function withTemporaryIndex(callback) {
       if (err.code !== 'ENOENT') throw err;
     }
 
-    const options = {
+    const options: GitOptions = {
       env: { ...process.env, GIT_INDEX_FILE: temporaryIndex }
     };
     await execGit(['add', '-A'], options);
@@ -131,9 +136,9 @@ async function withTemporaryIndex(callback) {
   }
 }
 
-async function getUntrackedPaths() {
+async function getUntrackedPaths(): Promise<Set<string>> {
   const { stdout } = await execGit(['status', '--porcelain=v1', '-z']);
-  const paths = new Set();
+  const paths = new Set<string>();
   const entries = stdout.split('\0');
 
   for (const entry of entries) {
@@ -145,9 +150,9 @@ async function getUntrackedPaths() {
   return paths;
 }
 
-function parseNameStatus(output, untrackedPaths) {
+function parseNameStatus(output: string, untrackedPaths: Set<string>): FileChange[] {
   const entries = output.split('\0');
-  const files = [];
+  const files: FileChange[] = [];
 
   for (let index = 0; index < entries.length - 1;) {
     const status = entries[index++];
@@ -178,18 +183,23 @@ function parseNameStatus(output, untrackedPaths) {
   return files;
 }
 
-function toLiteralPathspec(path) {
+function toLiteralPathspec(path: string): string {
   return `:(literal)${path}`;
 }
 
-function truncateDiff(diff, maxLength) {
+interface DiffSection {
+  header: string[];
+  hunks: { lines: string[] }[];
+}
+
+function truncateDiff(diff: string, maxLength: number): { truncatedDiff: string; truncated: boolean } {
   if (diff.length <= maxLength) {
     return { truncatedDiff: diff, truncated: false };
   }
 
   const lines = diff.split('\n');
-  const sections = [];
-  let currentSection = null;
+  const sections: DiffSection[] = [];
+  let currentSection: DiffSection | null = null;
 
   for (const line of lines) {
     if (line.startsWith('diff --git ') || line.startsWith('Submodule ')) {
@@ -208,7 +218,7 @@ function truncateDiff(diff, maxLength) {
 
   if (currentSection) sections.push(currentSection);
 
-  const result = [];
+  const result: string[] = [];
   let currentLength = 0;
 
   for (const section of sections) {
@@ -230,7 +240,7 @@ function truncateDiff(diff, maxLength) {
   return { truncatedDiff: diff, truncated: false };
 }
 
-export async function stageTracked(renamePaths = []) {
+export async function stageTracked(renamePaths: string[] = []): Promise<void> {
   try {
     if (renamePaths.length > 0) {
       await execGit(['add', '-A', '--', ...renamePaths.map(toLiteralPathspec)]);
@@ -244,7 +254,7 @@ export async function stageTracked(renamePaths = []) {
   }
 }
 
-export async function unstageAll() {
+export async function unstageAll(): Promise<void> {
   try {
     await execGit(['reset']);
   } catch (err) {
@@ -255,7 +265,7 @@ export async function unstageAll() {
   }
 }
 
-export async function stageFiles(files) {
+export async function stageFiles(files: string[]): Promise<void> {
   try {
     await execGit(['add', '-A', '--', ...files.map(toLiteralPathspec)]);
   } catch (err) {
@@ -266,7 +276,7 @@ export async function stageFiles(files) {
   }
 }
 
-export async function commit(messagePath) {
+export async function commit(messagePath: string): Promise<{ hash: string }> {
   try {
     await execGit(['commit', '-F', messagePath]);
     const { stdout } = await execGit(['rev-parse', 'HEAD']);
@@ -274,12 +284,12 @@ export async function commit(messagePath) {
   } catch (err) {
     throw Object.assign(
       new Error(`git commit failed:\n${err.stderr || err.message}`),
-      { code: 'commit_failed', exitCode: err.code || 1 }
+      { code: 'commit_failed', exitCode: typeof err.code === 'number' ? err.code : 1 }
     );
   }
 }
 
-export async function getLastCommits(count) {
+export async function getLastCommits(count: number): Promise<LogEntry[]> {
   try {
     const { stdout } = await execGit([
       'log', 
@@ -307,7 +317,7 @@ export async function getLastCommits(count) {
   }
 }
 
-export async function isMergeCommit(hash) {
+export async function isMergeCommit(hash: string): Promise<boolean> {
   try {
     await execGit(['rev-parse', `${hash}^2`]);
     return true;
@@ -316,7 +326,7 @@ export async function isMergeCommit(hash) {
   }
 }
 
-export async function isCommitPushed(commitHash) {
+export async function isCommitPushed(commitHash: string): Promise<boolean> {
   try {
     const { stdout } = await execGit(['branch', '-r', '--contains', commitHash]);
     return stdout.trim().length > 0;
@@ -325,7 +335,7 @@ export async function isCommitPushed(commitHash) {
   }
 }
 
-export async function undoCommits(count) {
+export async function undoCommits(count: number): Promise<UndoResult> {
   try {
     const { stdout: previousHead } = await execGit(['rev-parse', 'HEAD']);
     await execGit(['reset', '--soft', `HEAD~${count}`]);

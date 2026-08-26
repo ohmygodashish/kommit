@@ -1,75 +1,76 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { resolveProvider, resolveSkill, migrateConfig, getAvailableProviders } from '../src/config.js';
+import { resolveProvider, resolveSkill, migrateConfig, getAvailableProviders } from '../src/config.ts';
+import { config as makeConfig, flags, providerConfig, providers } from './fixtures.ts';
 
-describe('config.js', () => {
+describe('config.ts', () => {
   describe('resolveProvider', () => {
-    const config = {
+    const config = makeConfig({
       defaultProvider: 'openrouter',
-      providers: { openai: {}, openrouter: {}, ollama: {}, lmstudio: {} }
-    };
+      providers: providers('openai', 'openrouter', 'ollama', 'lmstudio')
+    });
     const auth = { openai: 'sk-xxx' };
 
     it('returns flag provider first', () => {
-      const result = resolveProvider(config, { provider: 'openai' }, {}, auth);
+      const result = resolveProvider(config, flags({ provider: 'openai' }), {}, auth);
       assert.strictEqual(result, 'openai');
     });
 
     it('returns env provider second', () => {
-      const result = resolveProvider(config, {}, { KOMMIT_PROVIDER: 'ollama' }, auth);
+      const result = resolveProvider(config, flags(), { KOMMIT_PROVIDER: 'ollama' }, auth);
       assert.strictEqual(result, 'ollama');
     });
 
     it('returns config default third', () => {
-      const result = resolveProvider(config, {}, {}, auth);
+      const result = resolveProvider(config, flags(), {}, auth);
       assert.strictEqual(result, 'openrouter');
     });
 
     it('falls back to first provider with key', () => {
-      const noDefault = { ...config, defaultProvider: null };
-      const result = resolveProvider(noDefault, {}, {}, auth);
+      const noDefault = { ...config, defaultProvider: '' };
+      const result = resolveProvider(noDefault, flags(), {}, auth);
       assert.strictEqual(result, 'openai');
     });
 
     it('falls back to local provider when no keys', () => {
-      const noDefault = { ...config, defaultProvider: null };
-      const result = resolveProvider(noDefault, {}, {}, {});
+      const noDefault = { ...config, defaultProvider: '' };
+      const result = resolveProvider(noDefault, flags(), {}, {});
       assert.ok(result === 'ollama' || result === 'lmstudio');
     });
 
     it('returns null when nothing configured', () => {
-      const empty = { providers: {} };
-      assert.strictEqual(resolveProvider(empty, {}, {}, {}), null);
+      const empty = makeConfig({ defaultProvider: '', providers: {} });
+      assert.strictEqual(resolveProvider(empty, flags(), {}, {}), null);
     });
   });
 
   describe('resolveSkill', () => {
-    const config = { skillName: 'base' };
+    const config = makeConfig({ skillName: 'base' });
 
     it('returns flag skill first', () => {
-      assert.strictEqual(resolveSkill(config, { skill: 'custom' }, {}), 'custom');
+      assert.strictEqual(resolveSkill(config, flags({ skill: 'custom' }), {}), 'custom');
     });
 
     it('returns env skill second', () => {
-      assert.strictEqual(resolveSkill(config, {}, { KOMMIT_SKILL: 'env-skill' }), 'env-skill');
+      assert.strictEqual(resolveSkill(config, flags(), { KOMMIT_SKILL: 'env-skill' }), 'env-skill');
     });
 
     it('returns config skill third', () => {
-      assert.strictEqual(resolveSkill(config, {}, {}), 'base');
+      assert.strictEqual(resolveSkill(config, flags(), {}), 'base');
     });
 
     it('returns null when not set', () => {
-      assert.strictEqual(resolveSkill({ skillName: null }, {}, {}), null);
+      assert.strictEqual(resolveSkill(makeConfig({ skillName: null }), flags(), {}), null);
     });
 
     it('handles empty string as null', () => {
-      assert.strictEqual(resolveSkill({}, { skill: '' }, {}), null);
+      assert.strictEqual(resolveSkill(makeConfig(), flags({ skill: '' }), {}), null);
     });
   });
 
   describe('migrateConfig', () => {
     it('fills defaults for v0 config', () => {
-      const old = { providers: { openai: { model: 'custom' } } };
+      const old = { providers: { openai: providerConfig({ model: 'custom' }) } };
       const { config, migrated, warning } = migrateConfig(old);
       assert.strictEqual(migrated, true);
       assert.strictEqual(config.version, 2);
@@ -101,9 +102,9 @@ describe('config.js', () => {
   });
 
   describe('getAvailableProviders', () => {
-    const config = {
-      providers: { openai: {}, anthropic: {}, google: {}, openrouter: {}, ollama: {}, lmstudio: {} }
-    };
+    const config = makeConfig({
+      providers: providers('openai', 'anthropic', 'google', 'openrouter', 'ollama', 'lmstudio')
+    });
 
     it('returns providers with API keys', () => {
       const auth = { openai: 'sk-xxx', anthropic: 'sk-ant' };
@@ -140,7 +141,7 @@ describe('config.js', () => {
     });
 
     it('returns empty array when no providers configured', () => {
-      const result = getAvailableProviders({ providers: {} }, {}, {});
+      const result = getAvailableProviders(makeConfig({ providers: {} }), {}, {});
       assert.deepStrictEqual(result, []);
     });
 

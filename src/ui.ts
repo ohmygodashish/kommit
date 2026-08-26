@@ -1,46 +1,67 @@
 import * as prompts from '@clack/prompts';
+import type { MultiSelectOptions, Option, SelectOptions, TextOptions } from '@clack/prompts';
+import type { CommitMessage, CommitPlan, LogEntry } from './types.ts';
 
-let _selectOverride = null;
-let _isCancelOverride = null;
-let _multiselectOverride = null;
-let _textOverride = null;
+export type MessageAction = 'use' | 'stageAndUse' | 'copy' | 'edit' | 'regenerate' | 'cancel';
+export type PlanAction = 'acceptAll' | 'select' | 'edit' | 'regenerate' | 'cancel';
+export type ErrorAction = 'retry' | 'switch' | 'cancel';
+export type UndoAction = 'regenerate' | 'edit' | 'cancel';
 
-export function setSelectForTesting(selectFn, isCancelFn, multiselectFn, textFn) {
+// Every call routes through an override wrapper for testability, which would drop @clack's
+// `T | symbol` narrowing. The generic pass-throughs below plus the _isCancel predicate keep
+// it: the narrowing comes from _select/_multiselect/_text's own signatures, so the override
+// types stay loose enough for a test double to be an ordinary stub.
+type SelectFn = (opts: any) => any;
+type IsCancelFn = (value: unknown) => boolean;
+type MultiselectFn = (opts: any) => any;
+type TextFn = (opts: any) => any;
+
+let _selectOverride: SelectFn | null = null;
+let _isCancelOverride: IsCancelFn | null = null;
+let _multiselectOverride: MultiselectFn | null = null;
+let _textOverride: TextFn | null = null;
+
+export function setSelectForTesting(
+  selectFn?: SelectFn | null,
+  isCancelFn?: IsCancelFn | null,
+  multiselectFn?: MultiselectFn | null,
+  textFn?: TextFn | null
+): void {
   _selectOverride = selectFn || null;
   _isCancelOverride = isCancelFn || null;
   _multiselectOverride = multiselectFn || null;
   _textOverride = textFn || null;
 }
 
-function _select(options) {
+function _select<Value>(options: SelectOptions<Value>): Promise<Value | symbol> {
   if (_selectOverride) {
     return _selectOverride(options);
   }
   return prompts.select(options);
 }
 
-function _isCancel(value) {
+function _isCancel(value: unknown): value is symbol {
   if (_isCancelOverride) {
     return _isCancelOverride(value);
   }
   return prompts.isCancel(value);
 }
 
-function _multiselect(options) {
+function _multiselect<Value>(options: MultiSelectOptions<Value>): Promise<Value[] | symbol> {
   if (_multiselectOverride) {
     return _multiselectOverride(options);
   }
   return prompts.multiselect(options);
 }
 
-function _text(options) {
+function _text(options: TextOptions): Promise<string | symbol> {
   if (_textOverride) {
     return _textOverride(options);
   }
   return prompts.text(options);
 }
 
-export async function promptAction(message, truncated, source) {
+export async function promptAction(message: CommitMessage, truncated: boolean, source: 'staged' | 'unstaged'): Promise<MessageAction> {
   console.log('');
   console.log('Suggested commit message:');
   console.log('─────────────────────────');
@@ -55,11 +76,11 @@ export async function promptAction(message, truncated, source) {
   }
   console.log('');
 
-  const useOption = source === 'unstaged'
+  const useOption: Option<MessageAction> = source === 'unstaged'
     ? { value: 'stageAndUse', label: '[s] Stage all and use' }
     : { value: 'use', label: '[u] Use this message' };
 
-  const action = await _select({
+  const action = await _select<MessageAction>({
     message: 'What would you like to do?',
     options: [
       useOption,
@@ -77,7 +98,7 @@ export async function promptAction(message, truncated, source) {
   return action;
 }
 
-export async function editMessage(message) {
+export async function editMessage(message: CommitMessage): Promise<CommitMessage> {
   const subject = await _text({
     message: 'Edit subject line:',
     initialValue: message.subject
@@ -102,14 +123,14 @@ export async function editMessage(message) {
   };
 }
 
-export async function promptError(error, canRetry, availableProviders = []) {
-  const options = [
-    ...(canRetry ? [{ value: 'retry', label: '[r] Retry' }] : []),
-    ...(availableProviders.length > 0 ? [{ value: 'switch', label: '[f] Retry with another provider' }] : []),
-    { value: 'cancel', label: '[c] Cancel' }
+export async function promptError(error: Error, canRetry: boolean, availableProviders: string[] = []): Promise<ErrorAction> {
+  const options: Option<ErrorAction>[] = [
+    ...(canRetry ? [{ value: 'retry' as const, label: '[r] Retry' }] : []),
+    ...(availableProviders.length > 0 ? [{ value: 'switch' as const, label: '[f] Retry with another provider' }] : []),
+    { value: 'cancel' as const, label: '[c] Cancel' }
   ];
 
-  const action = await _select({
+  const action = await _select<ErrorAction>({
     message: `Error: ${error.message}`,
     options
   });
@@ -121,7 +142,7 @@ export async function promptError(error, canRetry, availableProviders = []) {
   return action;
 }
 
-export async function promptSelectProvider(providers) {
+export async function promptSelectProvider(providers: string[]): Promise<string | null> {
   const options = providers.map(name => ({
     value: name,
     label: name
@@ -139,7 +160,7 @@ export async function promptSelectProvider(providers) {
   return selected;
 }
 
-export async function promptMultiCommitPlan(commits, truncated) {
+export async function promptMultiCommitPlan(commits: CommitPlan[], truncated: boolean): Promise<PlanAction> {
   console.log('');
   console.log('Proposed commits:');
   console.log('─────────────────');
@@ -157,7 +178,7 @@ export async function promptMultiCommitPlan(commits, truncated) {
     console.log('');
   }
 
-  const action = await _select({
+  const action = await _select<PlanAction>({
     message: 'What would you like to do?',
     options: [
       { value: 'acceptAll', label: '[a] Accept all and commit' },
@@ -175,7 +196,7 @@ export async function promptMultiCommitPlan(commits, truncated) {
   return action;
 }
 
-export async function promptSelectCommits(commits) {
+export async function promptSelectCommits(commits: CommitPlan[]): Promise<number[] | null> {
   const selected = await _multiselect({
     message: 'Select commits to execute:',
     options: commits.map((commit, index) => ({
@@ -193,7 +214,7 @@ export async function promptSelectCommits(commits) {
   return selected;
 }
 
-export async function promptSelectCommitToEdit(commits) {
+export async function promptSelectCommitToEdit(commits: CommitPlan[]): Promise<number | null> {
   const selected = await _select({
     message: 'Choose a commit to edit:',
     options: commits.map((commit, index) => ({
@@ -210,7 +231,7 @@ export async function promptSelectCommitToEdit(commits) {
   return selected;
 }
 
-export async function withSpinner(promise, message) {
+export async function withSpinner<T>(promise: Promise<T>, message: string): Promise<T> {
   const s = prompts.spinner();
   s.start(message);
   try {
@@ -223,7 +244,7 @@ export async function withSpinner(promise, message) {
   }
 }
 
-export async function promptUndoConfirmation(commits, pushedCommits) {
+export async function promptUndoConfirmation(commits: LogEntry[], pushedCommits: Set<string>): Promise<'yes' | 'cancel'> {
   console.log('');
   console.log(`Would undo ${commits.length} commit${commits.length > 1 ? 's' : ''}:`);
   console.log('─────────────────────────');
@@ -246,7 +267,7 @@ export async function promptUndoConfirmation(commits, pushedCommits) {
   
   console.log('');
   
-  const action = await _select({
+  const action = await _select<'yes' | 'cancel'>({
     message: 'What would you like to do?',
     options: [
       { value: 'yes', label: '[y] Yes, undo these commits' },
@@ -261,8 +282,8 @@ export async function promptUndoConfirmation(commits, pushedCommits) {
   return action;
 }
 
-export async function promptUndoAction(count) {
-  const action = await _select({
+export async function promptUndoAction(count: number): Promise<UndoAction> {
+  const action = await _select<UndoAction>({
     message: 'What would you like to do with the staged changes?',
     options: [
       { value: 'regenerate', label: '[r] Regenerate message' + (count > 1 ? ' (single commit for all changes)' : '') },

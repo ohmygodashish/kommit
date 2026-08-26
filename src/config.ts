@@ -2,14 +2,70 @@ import { homedir } from 'os';
 import { mkdir, readFile, writeFile, access } from 'fs/promises';
 import { join } from 'path';
 import * as prompts from '@clack/prompts';
+import type { ConfirmOptions, PasswordOptions, SelectOptions, TextOptions } from '@clack/prompts';
+import type { Auth, Config, Flags } from './types.ts';
+
+// Test seam for the wizards. Every @clack call and every exit routes through here, so a
+// test can drive a wizard end to end. `exit` is typed `never`: a stub must throw, which is
+// what production's process.exit does to control flow, so no test can run past an exit.
+interface PromptOverrides {
+  // intro/outro are decorative, but they write raw ANSI cursor sequences to stdout, which
+  // corrupts the node:test runner's serialized IPC on that same stream. They must be stubbable.
+  intro?: (title?: string) => void;
+  outro?: (message?: string) => void;
+  select?: <Value>(opts: SelectOptions<Value>) => Promise<Value | symbol>;
+  confirm?: (opts: ConfirmOptions) => Promise<boolean | symbol>;
+  password?: (opts: PasswordOptions) => Promise<string | symbol>;
+  text?: (opts: TextOptions) => Promise<string | symbol>;
+  isCancel?: (value: unknown) => value is symbol;
+  exit?: (code: number) => never;
+}
+
+let _overrides: PromptOverrides = {};
+
+export function setPromptsForTesting(overrides: PromptOverrides | null): void {
+  _overrides = overrides || {};
+}
+
+function _intro(title: string): void {
+  (_overrides.intro || prompts.intro)(title);
+}
+
+function _outro(message: string): void {
+  (_overrides.outro || prompts.outro)(message);
+}
+
+function _select<Value>(opts: SelectOptions<Value>): Promise<Value | symbol> {
+  return (_overrides.select || prompts.select)(opts);
+}
+
+function _confirm(opts: ConfirmOptions): Promise<boolean | symbol> {
+  return (_overrides.confirm || prompts.confirm)(opts);
+}
+
+function _password(opts: PasswordOptions): Promise<string | symbol> {
+  return (_overrides.password || prompts.password)(opts);
+}
+
+function _text(opts: TextOptions): Promise<string | symbol> {
+  return (_overrides.text || prompts.text)(opts);
+}
+
+function _isCancel(value: unknown): value is symbol {
+  return (_overrides.isCancel || prompts.isCancel)(value);
+}
+
+function _exit(code: number): never {
+  return (_overrides.exit || process.exit)(code);
+}
 
 const CURRENT_CONFIG_VERSION = 2;
 
-const MIGRATION_NOTES = {
+const MIGRATION_NOTES: Record<number, string> = {
   2: "Google default model is now 'gemini-3.1-flash-lite' (replaces the -lite-preview)."
 };
 
-const PROVIDER_LABELS = {
+const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   google: 'Google',
@@ -38,7 +94,7 @@ function getAuthPath() {
   return join(getDataDir(), 'auth.json');
 }
 
-function getDefaultConfig() {
+function getDefaultConfig(): Config {
   return {
     version: CURRENT_CONFIG_VERSION,
     defaultProvider: 'openrouter',
@@ -84,7 +140,7 @@ function getDefaultConfig() {
   };
 }
 
-async function fileExists(path) {
+async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
@@ -93,8 +149,8 @@ async function fileExists(path) {
   }
 }
 
-function buildMigrationWarning(fromVersion, toVersion) {
-  const notes = [];
+function buildMigrationWarning(fromVersion: number, toVersion: number): string | null {
+  const notes: string[] = [];
   for (let v = fromVersion + 1; v <= toVersion; v++) {
     if (MIGRATION_NOTES[v]) {
       notes.push(MIGRATION_NOTES[v]);
@@ -104,16 +160,19 @@ function buildMigrationWarning(fromVersion, toVersion) {
   return `Config migrated v${fromVersion}→v${toVersion}. ${notes.join(' ')} Run 'kommit --set' to switch.`;
 }
 
-export function migrateConfig(config) {
+// Takes whatever was on disk, which for an older schema version is missing fields by
+// definition, and returns a complete Config.
+export function migrateConfig(input: Partial<Config>): { config: Config; migrated: boolean; warning: string | null } {
   let migrated = false;
-  const fromVersion = config.version || 0;
+  const fromVersion = input.version || 0;
+  let config = input as Config;
 
   if (fromVersion < CURRENT_CONFIG_VERSION) {
     const defaults = getDefaultConfig();
-    const oldProviders = config.providers || {};
+    const oldProviders = input.providers || {};
     config = {
       ...defaults,
-      ...config,
+      ...input,
       version: CURRENT_CONFIG_VERSION,
       providers: { ...defaults.providers, ...oldProviders }
     };
@@ -125,12 +184,12 @@ export function migrateConfig(config) {
   return { config, migrated, warning };
 }
 
-export async function loadConfig() {
+export async function loadConfig(): Promise<{ config: Config; auth: Auth }> {
   const configPath = getConfigPath();
   const authPath = getAuthPath();
 
-  let config;
-  let auth = {};
+  let config: Config;
+  let auth: Auth = {};
 
   const configExists = await fileExists(configPath);
   if (!configExists) {
@@ -165,22 +224,22 @@ export async function loadConfig() {
   return { config, auth };
 }
 
-export async function saveConfig(config) {
+export async function saveConfig(config: Config): Promise<void> {
   const dir = getConfigDir();
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await writeFile(getConfigPath(), JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
-export async function saveAuth(auth) {
+export async function saveAuth(auth: Auth): Promise<void> {
   const dir = getDataDir();
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await writeFile(getAuthPath(), JSON.stringify(auth, null, 2), { mode: 0o600 });
 }
 
-export async function runInitWizard() {
-  prompts.intro('Welcome to kommit!');
+export async function runInitWizard(): Promise<void> {
+  _intro('Welcome to kommit!');
 
-  const provider = await prompts.select({
+  const provider = await _select({
     message: 'Choose your default LLM provider:',
     options: [
       { value: 'openai', label: PROVIDER_LABELS.openai },
@@ -192,15 +251,15 @@ export async function runInitWizard() {
     ]
   });
 
-  if (prompts.isCancel(provider)) {
-    process.exit(0);
+  if (_isCancel(provider)) {
+    _exit(0);
   }
 
   const needsKey = provider !== 'ollama' && provider !== 'lmstudio';
-  const newAuth = {};
+  const newAuth: Auth = {};
 
   if (needsKey) {
-    const envVarMap = {
+    const envVarMap: Record<string, string> = {
       openai: 'KOMMIT_OPENAI_API_KEY',
       anthropic: 'KOMMIT_ANTHROPIC_API_KEY',
       google: 'KOMMIT_GOOGLE_API_KEY',
@@ -209,14 +268,14 @@ export async function runInitWizard() {
     const envVar = envVarMap[provider];
     const envValue = process.env[envVar];
 
-    let key;
+    let key: string | undefined;
     if (envValue) {
-      const useEnv = await prompts.confirm({
+      const useEnv = await _confirm({
         message: `Found ${envVar} in environment. Use it?`,
         initialValue: true
       });
-      if (prompts.isCancel(useEnv)) {
-        process.exit(0);
+      if (_isCancel(useEnv)) {
+        _exit(0);
       }
       if (useEnv) {
         key = envValue;
@@ -224,12 +283,13 @@ export async function runInitWizard() {
     }
 
     if (!key) {
-      key = await prompts.password({
+      const entered = await _password({
         message: `Enter your ${provider} API key:`
       });
-      if (prompts.isCancel(key)) {
-        process.exit(0);
+      if (_isCancel(entered)) {
+        _exit(0);
       }
+      key = entered;
     }
 
     newAuth[provider] = key;
@@ -251,7 +311,7 @@ export async function runInitWizard() {
   // Auth: merge new keys with existing
   const authPath = getAuthPath();
   const authExists = await fileExists(authPath);
-  let existingAuth = {};
+  let existingAuth: Auth = {};
 
   if (authExists) {
     const raw = await readFile(authPath, 'utf8');
@@ -266,13 +326,13 @@ export async function runInitWizard() {
     console.log('No API key needed for local providers.');
   }
 
-  prompts.outro('Setup complete! Run `kommit` to generate commit messages.');
+  _outro('Setup complete! Run `kommit` to generate commit messages.');
 }
 
-export async function runSetWizard(config, auth) {
-  prompts.intro('Configure kommit');
+export async function runSetWizard(config: Config, auth: Auth): Promise<void> {
+  _intro('Configure kommit');
 
-  const setting = await prompts.select({
+  const setting = await _select({
     message: 'What would you like to configure?',
     options: [
       { value: 'defaultProvider', label: 'Default provider' },
@@ -280,13 +340,13 @@ export async function runSetWizard(config, auth) {
     ]
   });
 
-  if (prompts.isCancel(setting)) {
-    process.exit(0);
+  if (_isCancel(setting)) {
+    _exit(0);
   }
 
   if (setting === 'defaultProvider') {
     const noKeyProviders = ['ollama', 'lmstudio'];
-    const availableProviders = [];
+    const availableProviders: string[] = [];
 
     for (const name of Object.keys(config.providers || {})) {
       const hasKey = auth[name] && auth[name].length > 0;
@@ -298,7 +358,7 @@ export async function runSetWizard(config, auth) {
 
     if (availableProviders.length === 0) {
       console.log('No providers available. Add API keys with `kommit --init`.');
-      process.exit(1);
+      _exit(1);
     }
 
     const providerOptions = availableProviders.map(name => ({
@@ -306,51 +366,48 @@ export async function runSetWizard(config, auth) {
       label: PROVIDER_LABELS[name] || name
     }));
 
-    const selectedProvider = await prompts.select({
+    const selectedProvider = await _select({
       message: 'Choose your default provider:',
       options: providerOptions
     });
 
-    if (prompts.isCancel(selectedProvider)) {
-      process.exit(0);
+    if (_isCancel(selectedProvider)) {
+      _exit(0);
     }
 
     const currentModel = config.providers[selectedProvider]?.model || '';
-    const model = await prompts.text({
+    const model = await _text({
       message: 'Model name:',
       initialValue: currentModel
     });
 
-    if (prompts.isCancel(model)) {
-      process.exit(0);
+    if (_isCancel(model)) {
+      _exit(0);
     }
 
     config.defaultProvider = selectedProvider;
-    if (!config.providers[selectedProvider]) {
-      config.providers[selectedProvider] = {};
-    }
     config.providers[selectedProvider].model = model.trim();
   }
 
   if (setting === 'skillName') {
     const currentSkill = config.skillName || '';
-    const skill = await prompts.text({
+    const skill = await _text({
       message: 'Skill name (leave empty to clear):',
       initialValue: currentSkill
     });
 
-    if (prompts.isCancel(skill)) {
-      process.exit(0);
+    if (_isCancel(skill)) {
+      _exit(0);
     }
 
     config.skillName = skill.trim() || null;
   }
 
   await saveConfig(config);
-  prompts.outro('Configuration updated!');
+  _outro('Configuration updated!');
 }
 
-export function resolveProvider(config, flags, env, auth = {}) {
+export function resolveProvider(config: Config, flags: Flags, env: NodeJS.ProcessEnv, auth: Auth = {}): string | null {
   if (flags.provider) return flags.provider;
   if (env.KOMMIT_PROVIDER) return env.KOMMIT_PROVIDER;
   if (config.defaultProvider) return config.defaultProvider;
@@ -367,22 +424,22 @@ export function resolveProvider(config, flags, env, auth = {}) {
   return null;
 }
 
-export function resolveSkill(config, flags, env) {
+export function resolveSkill(config: Config, flags: Flags, env: NodeJS.ProcessEnv): string | null {
   if (flags.skill !== undefined) return flags.skill || null;
   if (env.KOMMIT_SKILL !== undefined) return env.KOMMIT_SKILL || null;
   if (config.skillName !== undefined) return config.skillName;
   return null;
 }
 
-export function getAvailableProviders(config, auth, env = {}) {
+export function getAvailableProviders(config: Config, auth: Auth, env: NodeJS.ProcessEnv = {}): string[] {
   const noKeyProviders = ['ollama', 'lmstudio'];
-  const envMap = {
+  const envMap: Record<string, string> = {
     openai: 'KOMMIT_OPENAI_API_KEY',
     anthropic: 'KOMMIT_ANTHROPIC_API_KEY',
     google: 'KOMMIT_GOOGLE_API_KEY',
     openrouter: 'KOMMIT_OPENROUTER_API_KEY'
   };
-  const available = [];
+  const available: string[] = [];
 
   for (const name of Object.keys(config.providers || {})) {
     const envVar = envMap[name];

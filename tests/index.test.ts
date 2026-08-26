@@ -13,13 +13,14 @@ import {
   commitMessage,
   executeMultiCommits,
   setExitForTesting
-} from '../src/index.js';
-import { unstageAll, getAllChanges } from '../src/git.js';
-import { parseMultiResponse } from '../src/prompt.js';
+} from '../src/index.ts';
+import { unstageAll, getAllChanges } from '../src/git.ts';
+import { parseMultiResponse } from '../src/prompt.ts';
+import { fileChange, providerConfig } from './fixtures.ts';
 
 const execFileAsync = promisify(execFile);
 
-describe('index.js helpers', () => {
+describe('index.ts helpers', () => {
   describe('buildFullMessage', () => {
     it('returns subject only when body is empty', () => {
       const result = buildFullMessage({ subject: 'feat: add auth', body: '' });
@@ -51,10 +52,10 @@ describe('index.js helpers', () => {
   });
 
   describe('commitMessage', () => {
-    let repoDir;
-    let originalCwd;
+    let repoDir: any;
+    let originalCwd: any;
 
-    async function execGit(args, cwd = repoDir) {
+    async function execGit(args: any, cwd = repoDir) {
       return execFileAsync('git', args, { cwd, encoding: 'utf8' });
     }
 
@@ -101,10 +102,10 @@ describe('index.js helpers', () => {
   });
 
   describe('executeMultiCommits', () => {
-    let repoDir;
-    let originalCwd;
+    let repoDir: any;
+    let originalCwd: any;
 
-    async function execGit(args, cwd = repoDir) {
+    async function execGit(args: any, cwd = repoDir) {
       return execFileAsync('git', args, { cwd, encoding: 'utf8' });
     }
 
@@ -134,9 +135,9 @@ describe('index.js helpers', () => {
       await writeFile(join(repoDir, 'c.txt'), 'c');
 
       const changeMap = new Map([
-        ['a.txt', { displayPath: 'a.txt', stagePaths: ['a.txt'] }],
-        ['b.txt', { displayPath: 'b.txt', stagePaths: ['b.txt'] }],
-        ['c.txt', { displayPath: 'c.txt', stagePaths: ['c.txt'] }]
+        ['a.txt', fileChange({ displayPath: 'a.txt', stagePaths: ['a.txt'] })],
+        ['b.txt', fileChange({ displayPath: 'b.txt', stagePaths: ['b.txt'] })],
+        ['c.txt', fileChange({ displayPath: 'c.txt', stagePaths: ['c.txt'] })]
       ]);
 
       const commits = [
@@ -161,7 +162,7 @@ describe('index.js helpers', () => {
       await rename(join(repoDir, 'old.txt'), join(repoDir, 'new.txt'));
 
       const changeMap = new Map([
-        ['old.txt -> new.txt', { displayPath: 'old.txt -> new.txt', stagePaths: ['old.txt', 'new.txt'] }]
+        ['old.txt -> new.txt', fileChange({ displayPath: 'old.txt -> new.txt', stagePaths: ['old.txt', 'new.txt'] })]
       ]);
 
       const commits = [
@@ -182,7 +183,7 @@ describe('index.js helpers', () => {
 
       await assert.rejects(
         async () => executeMultiCommits(commits, changeMap),
-        err => err.message.includes('Unknown file in commit plan')
+        (err: any) => err.message.includes('Unknown file in commit plan')
       );
     });
   });
@@ -231,10 +232,10 @@ describe('buildFileAliases', () => {
 // The model answers with a real path from one side, so the whole pipeline has to agree
 // on one canonical id: getAllChanges -> buildFileAliases -> parseMultiResponse -> commit.
 describe('multi-commit pipeline with a renamed file', () => {
-  let repoDir;
-  let originalCwd;
+  let repoDir: any;
+  let originalCwd: any;
 
-  async function execGit(args, cwd = repoDir) {
+  async function execGit(args: any, cwd = repoDir) {
     return execFileAsync('git', args, { cwd, encoding: 'utf8' });
   }
 
@@ -259,7 +260,7 @@ describe('multi-commit pipeline with a renamed file', () => {
   });
 
   it('commits a rename the model referenced by its old path', async () => {
-    const changeResult = await getAllChanges({ maxDiffLength: 12000 });
+    const changeResult = await getAllChanges(providerConfig({ maxDiffLength: 12000 }));
 
     const renameEntry = changeResult.files.find(file => file.changeType === 'R');
     assert.ok(renameEntry, 'expected git to detect the rename');

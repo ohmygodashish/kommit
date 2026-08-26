@@ -1,11 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { promptAction, withSpinner, setSelectForTesting } from '../src/ui.js';
+import { promptAction, withSpinner, setSelectForTesting } from '../src/ui.ts';
 
 describe('ui.js — additional coverage', () => {
   describe('promptAction', () => {
     it('returns use for staged diff', async () => {
-      let capturedOptions;
+      let capturedOptions: any;
       setSelectForTesting((opts) => {
         capturedOptions = opts;
         return 'use';
@@ -19,13 +19,13 @@ describe('ui.js — additional coverage', () => {
       setSelectForTesting(null);
 
       assert.strictEqual(result, 'use');
-      const labels = capturedOptions.options.map(o => o.label);
-      assert.ok(labels.some(l => l.includes('[u]')));
-      assert.ok(!labels.some(l => l.includes('[s]')));
+      const labels = capturedOptions.options.map((o: any) => o.label);
+      assert.ok(labels.some((l: any) => l.includes('[u]')));
+      assert.ok(!labels.some((l: any) => l.includes('[s]')));
     });
 
     it('returns stageAndUse for unstaged diff', async () => {
-      let capturedOptions;
+      let capturedOptions: any;
       setSelectForTesting((opts) => {
         capturedOptions = opts;
         return 'stageAndUse';
@@ -39,9 +39,9 @@ describe('ui.js — additional coverage', () => {
       setSelectForTesting(null);
 
       assert.strictEqual(result, 'stageAndUse');
-      const labels = capturedOptions.options.map(o => o.label);
-      assert.ok(labels.some(l => l.includes('[s]')));
-      assert.ok(!labels.some(l => l.includes('[u]')));
+      const labels = capturedOptions.options.map((o: any) => o.label);
+      assert.ok(labels.some((l: any) => l.includes('[s]')));
+      assert.ok(!labels.some((l: any) => l.includes('[u]')));
     });
 
     it('shows truncated warning when diff was truncated', async () => {
@@ -70,7 +70,7 @@ describe('ui.js — additional coverage', () => {
     it('rethrows when the promise rejects', async () => {
       await assert.rejects(
         async () => withSpinner(Promise.reject(new Error('fail')), 'Testing...'),
-        err => err.message === 'fail'
+        (err: any) => err.message === 'fail'
       );
     });
   });

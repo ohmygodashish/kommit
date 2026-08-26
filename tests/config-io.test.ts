@@ -4,12 +4,13 @@ import { mkdtemp, writeFile, rm, mkdir, access, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { loadConfig, saveConfig, saveAuth } from '../src/config.js';
+import { loadConfig, saveConfig, saveAuth } from '../src/config.ts';
+import { config as makeConfig } from './fixtures.ts';
 
 describe('config.js I/O', () => {
-  let baseConfigDir;
-  let baseDataDir;
-  let originalEnv;
+  let baseConfigDir: string;
+  let baseDataDir: string;
+  let originalEnv: NodeJS.ProcessEnv;
 
   before(async () => {
     originalEnv = { ...process.env };
@@ -37,7 +38,7 @@ describe('config.js I/O', () => {
       await setupDirs();
       await assert.rejects(
         async () => loadConfig(),
-        err => err.code === 'CONFIG_MISSING'
+        (err: any) => err.code === 'CONFIG_MISSING'
       );
     });
 
@@ -49,7 +50,7 @@ describe('config.js I/O', () => {
 
       await assert.rejects(
         async () => loadConfig(),
-        err => err.code === 'CONFIG_PARSE_ERROR'
+        (err: any) => err.code === 'CONFIG_PARSE_ERROR'
       );
     });
 
@@ -100,7 +101,7 @@ describe('config.js I/O', () => {
 
       await assert.rejects(
         async () => loadConfig(),
-        err => err.code === 'AUTH_PARSE_ERROR'
+        (err: any) => err.code === 'AUTH_PARSE_ERROR'
       );
     });
 
@@ -161,7 +162,7 @@ describe('config.js I/O', () => {
 
     it('creates parent directories if missing', async () => {
       const { configDir } = await setupDirs();
-      const config = { version: 2, defaultProvider: 'google' };
+      const config = makeConfig({ version: 2, defaultProvider: 'google' });
       await saveConfig(config);
 
       const configPath = join(configDir, 'kommit', 'config.json');

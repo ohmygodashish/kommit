@@ -1,5 +1,23 @@
+import type { ProviderConfig, NodeError } from './types.ts';
+
+interface OpenAIResponse {
+  choices?: { message?: { content?: string } }[];
+}
+
+interface AnthropicResponse {
+  content?: { text?: string }[];
+}
+
+interface GoogleResponse {
+  candidates?: { content?: { parts?: { text?: string }[] } }[];
+}
+
 export class LLMError extends Error {
-  constructor(message, code, status, body) {
+  code?: string;
+  status?: number | null;
+  body?: string | null;
+
+  constructor(message: string, code?: string, status?: number | null, body?: string | null) {
     super(message);
     this.code = code;
     this.status = status;
@@ -7,14 +25,20 @@ export class LLMError extends Error {
   }
 }
 
-export function isRetryable(error) {
+export function isRetryable(error: NodeError | LLMError): boolean {
   if (error.code === 'timeout') return true;
   if (error.code === 'network') return true;
   if (error.status && error.status >= 500 && error.status < 600) return true;
   return false;
 }
 
-export async function generateMessage(providerName, providerConfig, apiKey, systemPrompt, userPrompt) {
+export async function generateMessage(
+  providerName: string,
+  providerConfig: ProviderConfig,
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string> {
   const timeout = providerConfig.timeout || 30000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -32,7 +56,14 @@ export async function generateMessage(providerName, providerConfig, apiKey, syst
   }
 }
 
-async function callProvider(providerName, providerConfig, apiKey, systemPrompt, userPrompt, signal) {
+async function callProvider(
+  providerName: string,
+  providerConfig: ProviderConfig,
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  signal: AbortSignal
+): Promise<string> {
   const group = getProviderGroup(providerName);
 
   if (group === 'openai') {
@@ -46,7 +77,7 @@ async function callProvider(providerName, providerConfig, apiKey, systemPrompt, 
   throw new LLMError(`Unknown provider: ${providerName}`, 'unknown_provider');
 }
 
-function getProviderGroup(providerName) {
+function getProviderGroup(providerName: string): 'openai' | 'anthropic' | 'google' | null {
   const openaiCompatible = ['openai', 'openrouter', 'ollama', 'lmstudio'];
   if (openaiCompatible.includes(providerName)) return 'openai';
   if (providerName === 'anthropic') return 'anthropic';
@@ -54,7 +85,13 @@ function getProviderGroup(providerName) {
   return null;
 }
 
-async function callOpenAICompatible(providerConfig, apiKey, systemPrompt, userPrompt, signal) {
+async function callOpenAICompatible(
+  providerConfig: ProviderConfig,
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  signal: AbortSignal
+): Promise<string> {
   const body = {
     model: providerConfig.model,
     messages: [
@@ -64,7 +101,7 @@ async function callOpenAICompatible(providerConfig, apiKey, systemPrompt, userPr
     temperature: 0.2
   };
 
-  const headers = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
   if (apiKey) {
@@ -91,7 +128,7 @@ async function callOpenAICompatible(providerConfig, apiKey, systemPrompt, userPr
     throw new LLMError(`LLM API error (${res.status}): ${text}`, 'api_error', res.status, text);
   }
 
-  const data = await res.json();
+  const data = await res.json() as OpenAIResponse;
   const content = data.choices?.[0]?.message?.content;
   if (!content) {
     throw new LLMError('Invalid response shape from LLM', 'invalid_response');
@@ -100,7 +137,13 @@ async function callOpenAICompatible(providerConfig, apiKey, systemPrompt, userPr
   return content;
 }
 
-async function callAnthropic(providerConfig, apiKey, systemPrompt, userPrompt, signal) {
+async function callAnthropic(
+  providerConfig: ProviderConfig,
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  signal: AbortSignal
+): Promise<string> {
   const body = {
     model: providerConfig.model,
     max_tokens: 1024,
@@ -137,7 +180,7 @@ async function callAnthropic(providerConfig, apiKey, systemPrompt, userPrompt, s
     throw new LLMError(`LLM API error (${res.status}): ${text}`, 'api_error', res.status, text);
   }
 
-  const data = await res.json();
+  const data = await res.json() as AnthropicResponse;
   const content = data.content?.[0]?.text;
   if (!content) {
     throw new LLMError('Invalid response shape from LLM', 'invalid_response');
@@ -146,7 +189,13 @@ async function callAnthropic(providerConfig, apiKey, systemPrompt, userPrompt, s
   return content;
 }
 
-async function callGoogle(providerConfig, apiKey, systemPrompt, userPrompt, signal) {
+async function callGoogle(
+  providerConfig: ProviderConfig,
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  signal: AbortSignal
+): Promise<string> {
   const model = providerConfig.model;
   const baseUrl = providerConfig.endpoint.replace(/\/$/, '');
   const url = `${baseUrl}/${model}:generateContent?key=${apiKey}`;
@@ -189,7 +238,7 @@ async function callGoogle(providerConfig, apiKey, systemPrompt, userPrompt, sign
     throw new LLMError(`LLM API error (${res.status}): ${text}`, 'api_error', res.status, text);
   }
 
-  const data = await res.json();
+  const data = await res.json() as GoogleResponse;
   const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!content) {
     throw new LLMError('Invalid response shape from LLM', 'invalid_response');
