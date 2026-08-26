@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { promptAction, withSpinner, setSelectForTesting } from '../src/ui.js';
+import { promptAction, withSpinner, setSelectForTesting } from '../src/ui.ts';
 
 describe('ui.js — additional coverage', () => {
   describe('promptAction', () => {

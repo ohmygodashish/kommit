@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { promptError, promptSelectProvider, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, editMessage, setSelectForTesting } from '../src/ui.js';
+import { promptError, promptSelectProvider, promptMultiCommitPlan, promptSelectCommits, promptSelectCommitToEdit, editMessage, setSelectForTesting } from '../src/ui.ts';
 
-describe('ui.js', () => {
+describe('ui.ts', () => {
   describe('promptError', () => {
     it('returns retry when user selects retry', async () => {
       setSelectForTesting(() => 'retry');
