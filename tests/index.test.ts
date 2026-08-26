@@ -13,13 +13,13 @@ import {
   commitMessage,
   executeMultiCommits,
   setExitForTesting
-} from '../src/index.js';
+} from '../src/index.ts';
 import { unstageAll, getAllChanges } from '../src/git.ts';
 import { parseMultiResponse } from '../src/prompt.ts';
 
 const execFileAsync = promisify(execFile);
 
-describe('index.js helpers', () => {
+describe('index.ts helpers', () => {
   describe('buildFullMessage', () => {
     it('returns subject only when body is empty', () => {
       const result = buildFullMessage({ subject: 'feat: add auth', body: '' });

@@ -3,6 +3,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import process from 'process';
 
+import type { Auth, ChangeResult, CommitMessage, CommitPlan, Config, DiffResult, FileChange, Flags, LogEntry, ProviderConfig } from './types.ts';
+
 import { loadConfig, runInitWizard, runSetWizard, resolveProvider, resolveSkill, getAvailableProviders } from './config.ts';
 import { getDiff, getAllChanges, commit, stageTracked, stageFiles, unstageAll, getRepoRoot, getLastCommits, isMergeCommit, isCommitPushed, undoCommits } from './git.ts';
 import { generateMessage, isRetryable } from './llm.ts';
@@ -11,27 +13,54 @@ import { promptAction, editMessage, promptError, promptSelectProvider, promptMul
 import { parseArgs, getApiKey, printHelp, getVersion } from './args.ts';
 import { copyToClipboard } from './clipboard.ts';
 
-let _exitFn = (code) => process.exit(code);
+let _exitFn: (code: number) => never = (code: number) => process.exit(code);
 
-export function setExitForTesting(fn) {
-  _exitFn = fn || ((code) => process.exit(code));
+export function setExitForTesting(fn: ((code: number) => void) | null): void {
+  // A test override really does return; production's process.exit does not. The cast keeps
+  // that one lie at the seam instead of spreading non-null assertions through every flow.
+  _exitFn = (fn || ((code: number) => process.exit(code))) as (code: number) => never;
 }
 
-function _exit(code) {
-  _exitFn(code);
+function _exit(code: number): never {
+  return _exitFn(code);
 }
 
-export function printVerbose(label, content) {
+/** Generic over the parse result, covering both the single- and multi-commit call sites. */
+interface GenerateOptions<T> {
+  config: Config;
+  auth: Auth;
+  flags: Flags;
+  systemPrompt: string;
+  userPrompt: string;
+  originalProvider: string;
+  originalProviderConfig: ProviderConfig;
+  originalApiKey: string;
+  spinnerMessage: string;
+  parse: (raw: string) => T;
+  resetToOriginalOnRetry?: boolean;
+  allowRawFallback?: boolean;
+}
+
+interface FlowOptions {
+  flags: Flags;
+  config: Config;
+  auth: Auth;
+  provider: string;
+  providerConfig: ProviderConfig;
+  apiKey: string;
+}
+
+export function printVerbose(label: string, content: string): void {
   console.error(`\n=== ${label} ===\n${content}\n=== END ${label} ===\n`);
 }
 
-export function buildFullMessage(message) {
+export function buildFullMessage(message: CommitMessage): string {
   return message.body
     ? `${message.subject}\n\n${message.body}`
     : message.subject;
 }
 
-export function getVariationHint(count) {
+export function getVariationHint(count: number): string {
   const hints = [
     'Try to be more concise.',
     'Focus on the \'why\' rather than the \'what\'.',
@@ -40,7 +69,7 @@ export function getVariationHint(count) {
   return hints[Math.min(count - 1, hints.length - 1)];
 }
 
-export async function commitMessage(message) {
+export async function commitMessage(message: CommitMessage): Promise<{ hash: string }> {
   const tmpFile = join(tmpdir(), `kommit-msg-${Date.now()}-${process.pid}.txt`);
 
   try {
@@ -64,7 +93,7 @@ export async function commitMessage(message) {
   }
 }
 
-export async function generateWithFallback({
+export async function generateWithFallback<T>({
   config,
   auth,
   flags,
@@ -77,7 +106,7 @@ export async function generateWithFallback({
   parse,
   resetToOriginalOnRetry = false,
   allowRawFallback = false
-}) {
+}: GenerateOptions<T>): Promise<T | null> {
   let currentProvider = originalProvider;
   let currentProviderConfig = originalProviderConfig;
   let currentApiKey = originalApiKey;
@@ -102,7 +131,7 @@ export async function generateWithFallback({
           console.error(`Raw output:\n${parseErr.raw}`);
         }
         if (allowRawFallback) {
-          return { subject: rawResponse.trim(), body: '' };
+          return { subject: rawResponse.trim(), body: '' } as T;
         }
 
         const available = getAvailableProviders(config, auth, process.env).filter(p => p !== currentProvider);
@@ -162,8 +191,8 @@ export async function generateWithFallback({
   }
 }
 
-export async function runSingleCommitFlow({ flags, config, auth, provider, providerConfig, apiKey }) {
-  let diffResult;
+export async function runSingleCommitFlow({ flags, config, auth, provider, providerConfig, apiKey }: FlowOptions): Promise<void> {
+  let diffResult: DiffResult;
   try {
     diffResult = await getDiff(providerConfig);
   } catch (err) {
@@ -301,10 +330,10 @@ export async function runSingleCommitFlow({ flags, config, auth, provider, provi
 
 // Renames are identified to the model as 'old -> new', which is not a path, so accept the
 // real paths too. An entry's own displayPath always wins, so no alias shadows a real file.
-export function buildFileAliases(files) {
+export function buildFileAliases(files: FileChange[]): Map<string, string> {
   const canonical = new Set(files.map(file => file.displayPath));
   const aliases = new Map(files.map(file => [file.displayPath, file.displayPath]));
-  const conflicts = new Set();
+  const conflicts = new Set<string>();
 
   for (const file of files) {
     for (const alias of [file.path, ...file.stagePaths]) {
@@ -325,12 +354,12 @@ export function buildFileAliases(files) {
   return aliases;
 }
 
-export async function executeMultiCommits(commits, changeMap) {
+export async function executeMultiCommits(commits: CommitPlan[], changeMap: Map<string, FileChange>): Promise<void> {
   await unstageAll();
 
   for (let i = 0; i < commits.length; i++) {
     const commitPlan = commits[i];
-    const stagePathSet = new Set();
+    const stagePathSet = new Set<string>();
 
     for (const file of commitPlan.files) {
       const change = changeMap.get(file);
@@ -348,8 +377,8 @@ export async function executeMultiCommits(commits, changeMap) {
   }
 }
 
-export async function runMultiCommitFlow({ flags, config, auth, provider, providerConfig, apiKey }) {
-  let changeResult;
+export async function runMultiCommitFlow({ flags, config, auth, provider, providerConfig, apiKey }: FlowOptions): Promise<void> {
+  let changeResult: ChangeResult;
   try {
     changeResult = await getAllChanges(providerConfig);
   } catch (err) {
@@ -419,7 +448,7 @@ export async function runMultiCommitFlow({ flags, config, auth, provider, provid
         if (!selectedIndexes || selectedIndexes.length === 0) {
           continue;
         }
-        selectedCommits = selectedIndexes.map(index => plan[index]);
+        selectedCommits = selectedIndexes.map(index => plan![index]);
       }
 
       if (flags.dryRun) {
@@ -487,7 +516,7 @@ export async function runMultiCommitFlow({ flags, config, auth, provider, provid
   }
 }
 
-export async function runUndoFlow({ flags, config, auth, provider, providerConfig, apiKey }) {
+export async function runUndoFlow({ flags, config, auth, provider, providerConfig, apiKey }: FlowOptions): Promise<void> {
   const count = flags.undoCount;
   
   if (count < 1) {
@@ -495,7 +524,7 @@ export async function runUndoFlow({ flags, config, auth, provider, providerConfi
     _exit(1);
   }
   
-  let commits;
+  let commits: LogEntry[];
   try {
     commits = await getLastCommits(count);
   } catch (err) {
@@ -515,7 +544,7 @@ export async function runUndoFlow({ flags, config, auth, provider, providerConfi
     }
   }
   
-  const pushedCommits = new Set();
+  const pushedCommits = new Set<string>();
   for (const commit of commits) {
     if (await isCommitPushed(commit.hash)) {
       pushedCommits.add(commit.hash);
@@ -565,7 +594,7 @@ export async function runUndoFlow({ flags, config, auth, provider, providerConfi
   }
   
   if (postAction === 'regenerate') {
-    let diffResult;
+    let diffResult: DiffResult;
     try {
       diffResult = await getDiff(providerConfig);
     } catch (err) {
@@ -706,7 +735,7 @@ export async function runUndoFlow({ flags, config, auth, provider, providerConfi
   }
 }
 
-export async function main() {
+export async function main(): Promise<void> {
   const flags = parseArgs(process.argv.slice(2));
 
   if (flags.help) {
@@ -726,7 +755,7 @@ export async function main() {
   }
 
   if (flags.set) {
-    let config, auth;
+    let config: Config, auth: Auth;
     try {
       ({ config, auth } = await loadConfig());
     } catch (err) {
@@ -737,7 +766,7 @@ export async function main() {
     _exit(0);
   }
 
-  let config, auth;
+  let config: Config, auth: Auth;
   try {
     ({ config, auth } = await loadConfig());
   } catch (err) {
