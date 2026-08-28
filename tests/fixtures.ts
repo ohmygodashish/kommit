@@ -96,3 +96,15 @@ export function logEntry(overrides: Partial<LogEntry> = {}): LogEntry {
 export function providers(...names: string[]): Record<string, ProviderConfig> {
   return Object.fromEntries(names.map(name => [name, providerConfig()]));
 }
+
+// The exit seams (`setExitForTesting`, the wizards' `exit`) are typed `never`, so a stub
+// has to throw. That is what process.exit does to control flow in production, and it means
+// no test can silently run past an exit.
+export class ExitSignal extends Error {
+  code: number;
+
+  constructor(code: number) {
+    super(`exit ${code}`);
+    this.code = code;
+  }
+}

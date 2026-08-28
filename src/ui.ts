@@ -15,11 +15,13 @@ type SelectFn = (opts: any) => any;
 type IsCancelFn = (value: unknown) => boolean;
 type MultiselectFn = (opts: any) => any;
 type TextFn = (opts: any) => any;
+type SpinnerFn = typeof prompts.spinner;
 
 let _selectOverride: SelectFn | null = null;
 let _isCancelOverride: IsCancelFn | null = null;
 let _multiselectOverride: MultiselectFn | null = null;
 let _textOverride: TextFn | null = null;
+let _spinnerOverride: SpinnerFn | null = null;
 
 export function setSelectForTesting(
   selectFn?: SelectFn | null,
@@ -231,8 +233,16 @@ export async function promptSelectCommitToEdit(commits: CommitPlan[]): Promise<n
   return selected;
 }
 
+// The spinner animates by writing ANSI to stdout, which node:test uses for its serialized
+// IPC — the same hazard as config.ts's intro/outro. Every flow calls withSpinner, so it has
+// to be stubbable or no flow can be tested. Kept a separate setter rather than a fifth
+// positional parameter on setSelectForTesting.
+export function setSpinnerForTesting(fn: SpinnerFn | null): void {
+  _spinnerOverride = fn;
+}
+
 export async function withSpinner<T>(promise: Promise<T>, message: string): Promise<T> {
-  const s = prompts.spinner();
+  const s = (_spinnerOverride || prompts.spinner)();
   s.start(message);
   try {
     const result = await promise;

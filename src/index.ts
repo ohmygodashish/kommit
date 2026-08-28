@@ -285,12 +285,12 @@ export async function runSingleCommitFlow({ flags, config, auth, provider, provi
     if (action === 'copy') {
       try {
         await copyToClipboard(buildFullMessage(currentMessage));
-        console.log('\n📋 Copied to clipboard!\n');
-        _exit(0);
       } catch (err) {
         console.error(`\nkommit: ${err.message}\n`);
         _exit(1);
       }
+      console.log('\n📋 Copied to clipboard!\n');
+      _exit(0);
     }
 
     if (action === 'edit') {
@@ -663,12 +663,12 @@ export async function runUndoFlow({ flags, config, auth, provider, providerConfi
       if (action === 'copy') {
         try {
           await copyToClipboard(buildFullMessage(currentMessage));
-          console.log('\n📋 Copied to clipboard!\n');
-          _exit(0);
         } catch (err) {
           console.error(`\nkommit: ${err.message}\n`);
           _exit(1);
         }
+        console.log('\n📋 Copied to clipboard!\n');
+        _exit(0);
       }
       
       if (action === 'edit') {

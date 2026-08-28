@@ -6,6 +6,7 @@ import { join } from 'path';
 
 import { runInitWizard, runSetWizard, setPromptsForTesting } from '../src/config.ts';
 import type { Config, ProviderConfig } from '../src/types.ts';
+import { ExitSignal } from './fixtures.ts';
 
 type Overrides = NonNullable<Parameters<typeof setPromptsForTesting>[0]>;
 
@@ -16,17 +17,6 @@ interface Stub {
 }
 
 const CANCEL = Symbol('cancel');
-
-// The seam types exit as `never`, so a stub has to throw. That is exactly what production
-// does to control flow, and it means a test can never silently run past an exit.
-class ExitSignal extends Error {
-  code: number;
-
-  constructor(code: number) {
-    super(`exit ${code}`);
-    this.code = code;
-  }
-}
 
 function exit(code: number): never {
   throw new ExitSignal(code);
