@@ -52,6 +52,12 @@ jobs:
       - name: Test
         run: npm test
 
+      # Thresholds only ratchet up. One platform is enough: coverage does not vary by OS,
+      # and the matrix still runs the suite itself everywhere.
+      - name: Coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run test:coverage
+
   package:
     name: Package smoke test
     runs-on: ubuntu-latest
