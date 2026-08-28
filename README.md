@@ -46,6 +46,14 @@ kommit [options]
 | `--help`, `-h` | Show help message |
 | `--version`, `-v` | Show version number |
 
+Unrecognised options are rejected rather than ignored, so a typo can't quietly turn into a real commit:
+
+```bash
+$ kommit --dryrun
+kommit: unknown option '--dryrun'
+Did you mean '--dry-run'?
+```
+
 ### Interactive Flow
 
 After generating a message, you'll see:
