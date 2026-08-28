@@ -1,5 +1,32 @@
 import type { Auth, Flags } from './types.ts';
 
+const KNOWN_OPTIONS = [
+  '--init', '--set', '--multi', '--undo', '--provider', '--skill',
+  '--dry-run', '--verbose', '--help', '-h', '--version', '-v'
+];
+
+// Misplaced hyphens are the realistic typo ('--dryrun' for '--dry-run'), so normalise
+// them away instead of pulling in an edit-distance implementation for the rest.
+const normalize = (s: string): string => s.replace(/-/g, '').toLowerCase();
+
+function unknownOption(arg: string): Error {
+  const match = KNOWN_OPTIONS.find((opt) => normalize(opt) === normalize(arg));
+  return new Error(
+    `unknown option '${arg}'\n` +
+    (match ? `Did you mean '${match}'?` : "Run 'kommit --help' to see available options.")
+  );
+}
+
+// Every value-taking option names a provider or a skill, so a '-' prefix always means
+// the value is missing and we swallowed the next flag.
+function requireValue(argv: string[], i: number, name: string): string {
+  const value = argv[i];
+  if (value === undefined || value.startsWith('-')) {
+    throw new Error(`'${name}' requires a value`);
+  }
+  return value;
+}
+
 export function parseArgs(argv: string[]): Flags {
   const flags: Flags = {
     init: false,
@@ -34,10 +61,10 @@ export function parseArgs(argv: string[]): Flags {
         }
         break;
       case '--provider':
-        flags.provider = argv[++i];
+        flags.provider = requireValue(argv, ++i, '--provider');
         break;
       case '--skill':
-        flags.skill = argv[++i];
+        flags.skill = requireValue(argv, ++i, '--skill');
         break;
       case '--dry-run':
         flags.dryRun = true;
@@ -53,6 +80,12 @@ export function parseArgs(argv: string[]): Flags {
       case '-v':
         flags.version = true;
         break;
+      default:
+        // kommit takes no positional arguments, so anything unmatched is a mistake.
+        // Silently ignoring it meant a typo'd '--dry-run' made a real commit.
+        throw arg.startsWith('-')
+          ? unknownOption(arg)
+          : new Error(`unexpected argument '${arg}'`);
     }
   }
 

@@ -42,4 +42,57 @@ describe('args.ts', () => {
       assert.strictEqual(flags.undoCount, 0);
     });
   });
+
+  describe('parseArgs rejects bad input', () => {
+    it('throws on an unknown option', () => {
+      assert.throws(() => parseArgs(['--nope']), /unknown option '--nope'/);
+    });
+
+    it('suggests the right flag when only the hyphens are wrong', () => {
+      assert.throws(() => parseArgs(['--dryrun']), /Did you mean '--dry-run'\?/);
+      assert.throws(() => parseArgs(['-verbose']), /Did you mean '--verbose'\?/);
+    });
+
+    it('points at --help when nothing is close', () => {
+      assert.throws(() => parseArgs(['--zzz']), /kommit --help/);
+    });
+
+    it('throws when --provider is missing its value', () => {
+      assert.throws(() => parseArgs(['--provider']), /'--provider' requires a value/);
+    });
+
+    it('throws when --provider swallows the next flag', () => {
+      assert.throws(() => parseArgs(['--provider', '--verbose']), /'--provider' requires a value/);
+    });
+
+    it('throws when --skill is missing its value', () => {
+      assert.throws(() => parseArgs(['--skill']), /'--skill' requires a value/);
+      assert.throws(() => parseArgs(['--skill', '--dry-run']), /'--skill' requires a value/);
+    });
+
+    it('throws on an unexpected positional argument', () => {
+      assert.throws(() => parseArgs(['fix-stuff']), /unexpected argument 'fix-stuff'/);
+    });
+  });
+
+  describe('parseArgs accepts valid input', () => {
+    it('parses options that take a value', () => {
+      const flags = parseArgs(['--provider', 'ollama', '--skill', 'terse']);
+      assert.strictEqual(flags.provider, 'ollama');
+      assert.strictEqual(flags.skill, 'terse');
+    });
+
+    it('parses short forms', () => {
+      assert.strictEqual(parseArgs(['-h']).help, true);
+      assert.strictEqual(parseArgs(['-v']).version, true);
+    });
+
+    it('parses every long flag', () => {
+      const flags = parseArgs(['--init', '--set', '--multi', '--dry-run', '--verbose', '--help', '--version']);
+      assert.deepStrictEqual(
+        [flags.init, flags.set, flags.multi, flags.dryRun, flags.verbose, flags.help, flags.version],
+        [true, true, true, true, true, true, true]
+      );
+    });
+  });
 });
